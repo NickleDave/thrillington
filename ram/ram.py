@@ -22,20 +22,19 @@ class RAM:
 
     def __init__(self,
                  sensor_bandwidth=8,
-                 min_radius=4,  # zooms -> minRadius * 2**<depth_level>
-                 depth=3,  # zooms
+                 min_radius=4,  # zooms -> minRadius * 2**<num_patches_level>
+                 num_patches=3,  # zooms
                  channels=1,  # grayscale
                  batch_size = 10,
+                 input_image_size = (28,28),
                  hg_size = 128,
                  hl_size = 128,
                  g_size = 256,
                  cell_size = 256,
-                 cell_out_size = cell_size,
                  glimpses=6,
                  n_classes = 10,
-                 lr = 1e-3,
+                 learning_rate = 1e-3,
                  max_iters = 1000000,
-                 mnist_size = 28,
                  loc_sd = 0.1
                  ):
         """
@@ -44,39 +43,77 @@ class RAM:
         ----------
         sensor_bandwidth : int
             size of square input window, in pixels. Default is 8.
-        min_radius
+        min_radius : int
 
-        sensor_area
-        depth
-        channels
-        batch_size
+        num_patches : int
+            number of patches k that the retina encoding p(x,l) extracts
+            at location l from image x. Default is 3.
+        channels : int
+            Number of color channels in images. Default is 1 (grayscale).
+        batch_size : int
+            Default is 10.
+        input_image_size : tuple
+            Default is (28, 28) (size of MNIST).
         hg_size
         hl_size
         g_size
         cell_size
-        cell_out_size
         """
 
         self.min_radius = min_radius
+        self.num_patches = num_patches
         self.sensor_bandwidth = sensor_bandwidth
-        self.sensor_area = sensor_bandwidth ** 2,
-        self.total_sensor_bandwidth = depth * sensorBandwidth * sensorBandwidth * channels
-        self.mean_locs = []
-        self.sampled_locs = []  # ~N(mean_locs[.], loc_sd)
-        self.glimpse_images = []  # to show in window
+        self.sensor_area = sensor_bandwidth ** 2
+        self.batch_size = batch_size
+        self.input_image_size = input_image_size
+        self.total_sensor_bandwidth = (num_patches * sensor_bandwidth * sensor_bandwidth * channels)
+        self.cell_size = cell_size
+        self.cell_out_size = self.cell_size  # not clear to me why
+        self.learning_rate = learning_rate
 
+        self.graph = tf.Graph()
+        with self.graph:
+            self.labels = tf.placeholder("float32", shape=[self.batch_size, self.n_classes],
+                                         name="labels")
+            self.inputs = tf.placeholder(tf.float32,
+                                         shape=(self.batch_size,
+                                                self.input_image_size), name="images")
+            self.labels = tf.placeholder(tf.float32,
+                                         shape=(batch_size), name="labels")
+            self.onehot = tf.placeholder(tf.float32, shape=(batch_size, 10), name="oneHotLabels")
+
+            self.model
 
     @define_scope
-    def weight_variable(self, shape):
-        initial = tf.truncated_normal(shape, stddev=1.0 / shape[0])  # for now
+    def _weight_variable(self, shape):
+        """convenience function to return variable with weights"""
+        initial = tf.truncated_normal(shape, stddev=1.0 / shape[0])
         return tf.Variable(initial)
 
     @define_scope
-    def glimpse_sensor(self, img, normLoc):
-        loc = ((normLoc + 1) / 2) * mnist_size  # normLoc coordinates are between -1 and 1
-        loc = tf.cast(loc, tf.int32)
+    def glimpse_sensor(self, img, loc_normd):
+        """glimpse sensor, returns retina-like representation
 
-        img = tf.reshape(img, (batch_size, mnist_size, mnist_size, channels))
+        Parameters
+        ----------
+        img : ndarray
+            image
+        loc_normd : ndarray
+            location of retina "fixation", in normalized co-ordinates
+            where center of image is (0,0), upper left corner is (-1,-1),
+            and lower right corner is (1,1)
+
+        Returns
+        -------
+
+        """
+
+        loc = ((loc_normd + 1) / 2) * self.input_image_size
+        loc = tf.cast(loc, tf.int32)
+        img = tf.reshape(img, (self.batch_size,
+                               self.input_image_size[0],
+                               self.input_image_size[1],
+                               self.channels))
 
         zooms = []
 
@@ -84,14 +121,15 @@ class RAM:
         for k in range(self.batch_size):
             img_zooms = []
             one_img = img[k, :, :, :]
-            max_radius = minRadius * (2 ** (depth - 1))
+            max_radius = self.min_radius * (2 ** (self.num_patches - 1))
             offset = max_radius
 
             # pad image with zeros
             one_img = tf.image.pad_to_bounding_box(one_img, offset, offset,
-                                                   max_radius * 2 + mnist_size, max_radius * 2 + mnist_size)
+                                                   max_radius * 2 + mnist_size,
+                                                   max_radius * 2 + mnist_size)
 
-            for i in range(self.depth):
+            for i in range(self.num_patches):
                 r = int(self.min_radius * (2 ** (i - 1)))
 
                 d_raw = 2 * r
@@ -102,7 +140,7 @@ class RAM:
                 loc_k = loc[k, :]
                 adjusted_loc = offset + loc_k - r
 
-                one_img2 = tf.reshape(one_img, (one_img.get_shape()[0].value, \
+                one_img2 = tf.reshape(one_img, (one_img.get_shape()[0].value,
                                                 one_img.get_shape()[1].value))
 
                 # crop image to (d x d)
@@ -117,33 +155,33 @@ class RAM:
 
         zooms = tf.stack(zooms)
 
-        glimpse_images.append(zooms)
+        tf.summary.image(name='patches', tensor=zooms)
 
         return zooms
 
     @define_scope
-    def get_glimpse(self, loc):
-        glimpse_input = self.glimpse_sensor(inputs_placeholder, loc)
+    def glimpse_network(self, loc):
+        glimpse_input = self.glimpse_sensor(self.inputs, loc)
 
         glimpse_input = tf.reshape(glimpse_input,
                                    (self.batch_size,
                                     self.totalSensorBandwidth))
 
-        l_hl = self.weight_variable((2, hl_size))
-        glimpse_hg = self.weight_variable((totalSensorBandwidth, hg_size))
+        l_hl = self._weight_variable((2, hl_size))
+        glimpse_hg = self._weight_variable((totalSensorBandwidth, hg_size))
 
         hg = tf.nn.relu(tf.matmul(glimpse_input, glimpse_hg))
         hl = tf.nn.relu(tf.matmul(loc, l_hl))
 
-        hg_g = self.weight_variable((hg_size, g_size))
-        hl_g = self.weight_variable((hl_size, g_size))
+        hg_g = self._weight_variable((hg_size, g_size))
+        hl_g = self._weight_variable((hl_size, g_size))
 
         g = tf.nn.relu(tf.matmul(hg, hg_g) + tf.matmul(hl, hl_g))
 
         return g
 
     @define_scope
-    def get_next_input(self, output, i):
+    def _get_next_input(self, output, i):
         mean_loc = tf.tanh(tf.matmul(output, h_l_out))
         mean_locs.append(mean_loc)
 
@@ -156,18 +194,45 @@ class RAM:
     @define_scope
     def model(self):
         initial_loc = tf.random_uniform((self.batch_size, 2), minval=-1, maxval=1)
-
-        initial_glimpse = get_glimpse(initial_loc)
-
+        initial_glimpse = self.glimpse_network(initial_loc)
         lstm_cell = rnn_cell.LSTMCell(cell_size, g_size, num_proj=cell_out_size)
-
         initial_state = lstm_cell.zero_state(batch_size, tf.float32)
-
         inputs = [initial_glimpse]
         inputs.extend([0] * (glimpses - 1))
-
         outputs, _ = seq2seq.rnn_decoder(inputs, initial_state, lstm_cell,
-                                         loop_function=get_next_input)
-        get_next_input(outputs[-1], 0)
-
+                                         loop_function=self._get_next_input)
+        self._get_next_input(outputs[-1], 0)
         return outputs
+
+    def gaussian_pdf(self, mean, sample):
+        """used to estimate maximum likelihood for glimpse location"""
+        Z = 1.0 / (loc_sd * tf.sqrt(2.0 * math.pi))
+        a = -tf.square(sample - mean) / (2.0 * tf.square(loc_sd))
+        return Z * tf.exp(a)
+
+    def calc_reward(self, outputs):
+        outputs = outputs[-1]  # look at ONLY THE END of the sequence
+        outputs = tf.reshape(outputs, (self.batch_size, self.cell_out_size))
+        h_a_out = self._weight_variable((cell_out_size, n_classes))
+
+        p_y = tf.nn.softmax(tf.matmul(outputs, h_a_out))
+        max_p_y = tf.arg_max(p_y, 1)
+        correct_y = tf.cast(self.labels, tf.int64)
+
+        R = tf.cast(tf.equal(max_p_y, correct_y), tf.float32)  # reward per example
+
+        reward = tf.reduce_mean(R)  # overall reward
+
+        p_loc = self.gaussian_pdf(mean_locs, sampled_locs)
+        p_loc = tf.reshape(p_loc, (self.batch_size, self.glimpses * 2))
+
+        R = tf.reshape(R, (batch_size, 1))
+        J = tf.concat(1, [tf.log(p_y + 1e-5) * self.onehot_labels, tf.log(p_loc + 1e-5) * R])
+        J = tf.reduce_sum(J, 1)
+        J = tf.reduce_mean(J, 0)
+        cost = -J
+
+        optimizer = tf.train.AdamOptimizer(self.learning_rate)
+        train_op = optimizer.minimize(cost)
+
+        return cost, reward, max_p_y, correct_y, train_op
