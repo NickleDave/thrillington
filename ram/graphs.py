@@ -35,7 +35,23 @@ class GlimpseSensor:
         self.k = k
         self.s = s
 
-    def glimpse(self, img, loc_normd):
+    def _denormalize(self, loc_normd, img_H, img_W):
+        """
+
+        Parameters
+        ----------
+        loc_normd
+        img_H
+        img_W
+
+        Returns
+        -------
+
+        """
+
+        return loc
+
+    def glimpse(self, img, loc):
         """take a "glimpse" of a batch of images.
         Returns patches from each image.
 
@@ -43,7 +59,7 @@ class GlimpseSensor:
         ----------
         img : tf.Tensor
             with shape (B, H, W, C). Minibatch of images.
-        loc_normd : tf.Tensor
+        loc : tf.Tensor
             with shape (B, 2). Location of retina "fixation",
             in normalized co-ordinates where center of image is (0,0),
             upper left corner is (-1,-1), and lower right corner is (1,1).
@@ -53,20 +69,23 @@ class GlimpseSensor:
 
         """
 
-        loc = ((loc_normd + 1) / 2) * self.input_image_size
-        loc = tf.cast(loc, tf.int32)
-        img = tf.reshape(img, (self.batch_size,
-                               self.input_image_size[0],
-                               self.input_image_size[1],
-                               self.channels))
+        batch_size, img_H, img_W, C = img.shape
+        # convert image co-ordinates from normalized to co-ordinates within
+        # the specific size of the images
+        loc[:, 0] = ((loc[:, 0] + 1)/2) + img_H
+        loc[:, 1] = ((loc[:, 1] + 1) / 2) + img_W
 
-        zooms = []
+        # compute top left corner of patches
+        patch_x = loc[:, 0] - (img_H // 2)
+        patch_y = loc[:, 1] - (img_W // 2)
+
+        patches = []
 
         # process each image individually
-        for k in range(self.batch_size):
-            img_zooms = []
-            one_img = img[k, :, :, :]
-            max_radius = self.g * (2 ** (self.k - 1))
+        for ind in range(batch_size):
+            img_patches = []
+            one_img = img[ind, :, :, :]
+            max_radius = self.g_w * (2 ** (self.k - 1))
             offset = max_radius
 
             # pad image with zeros
@@ -74,7 +93,7 @@ class GlimpseSensor:
                                                    max_radius * 2 + mnist_size,
                                                    max_radius * 2 + mnist_size)
 
-            for i in range(self.num_patches):
+            for i in range(self.k):
                 r = int(self.min_radius * (2 ** (i - 1)))
 
                 d_raw = 2 * r
@@ -89,20 +108,20 @@ class GlimpseSensor:
                                                 one_img.get_shape()[1].value))
 
                 # crop image to (d x d)
-                zoom = tf.slice(one_img2, adjusted_loc, d)
+                patch = tf.slice(one_img2, adjusted_loc, d)
 
                 # resize cropped image to (sensorBandwidth x sensorBandwidth)
-                zoom = tf.image.resize_bilinear(tf.reshape(zoom, (1, d_raw, d_raw, 1)), (sensorBandwidth, sensorBandwidth))
-                zoom = tf.reshape(zoom, (sensorBandwidth, sensorBandwidth))
-                img_zooms.append(zoom)
+                patch = tf.image.resize_bilinear(tf.reshape(patch, (1, d_raw, d_raw, 1)), (sensorBandwidth, sensorBandwidth))
+                patch = tf.reshape(patch, (sensorBandwidth, sensorBandwidth))
+                img_patches.append(patch)
 
-            zooms.append(tf.stack(img_zooms))
+            patches.append(tf.stack(img_patches))
 
-        zooms = tf.stack(zooms)
+        patches = tf.stack(patches)
 
-        tf.summary.image(name='patches', tensor=zooms)
+        # tf.summary.image(name='patches', tensor=zooms)
 
-        return zooms
+        return patches
 
 
 def glimpse_network(self, loc):
