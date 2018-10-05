@@ -8,7 +8,7 @@ class GlimpseSensor(tf.keras.Model):
     of a region of an image x, given a location l to 'fixate'.
     """
 
-    def __init__(self, g_w, k, s):
+    def __init__(self, g_w=8, k=3, s=2):
         """__init__ for GlimpseSensor
 
         Parameters
@@ -20,9 +20,8 @@ class GlimpseSensor(tf.keras.Model):
             number of patches that the retina encoding rho(x,l) extracts
             at location l from image x. Default is 3.
         s : int
-            scaling factor, controls size of successive patches.
+            scaling factor, controls size of successive patches. Default is 2.
         """
-
         super(GlimpseSensor, self).__init__()
         self.g_w = g_w
         self.k = k
