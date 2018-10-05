@@ -2,17 +2,9 @@ import tensorflow as tf
 from tensorflow.contrib import seq2seq
 from tensorflow.nn import rnn_cell
 
-from .decorators import define_scope
 
-def _weight_variable(self, shape, name=None):
-    """convenience function to return tf.Variable for weights
-    Uses truncated normal to avoid values to far from mean of 0"""
-    initial = tf.truncated_normal(shape, stddev=1.0 / shape[0])
-    return tf.Variable(initial, name=name)
-
-
-class GlimpseSensor:
-    """glimpse sensor, returns retina-like representation
+class GlimpseSensor(tf.keras.Model):
+    """glimpse sensor, returns retina-like representation rho
     of a region of an image x, given a location l to 'fixate'.
     """
 
@@ -31,29 +23,15 @@ class GlimpseSensor:
             scaling factor, controls size of successive patches.
         """
 
+        super(GlimpseSensor, self).__init__()
         self.g_w = g_w
         self.k = k
         self.s = s
 
-    def _denormalize(self, loc_normd, img_H, img_W):
-        """
-
-        Parameters
-        ----------
-        loc_normd
-        img_H
-        img_W
-
-        Returns
-        -------
-
-        """
-
-        return loc
-
     def glimpse(self, img, loc):
         """take a "glimpse" of a batch of images.
-        Returns patches from each image.
+        Returns retina-like representation rho(img, loc)
+        consisting of patches from each image.
 
         Parameters
         ----------
@@ -66,7 +44,10 @@ class GlimpseSensor:
 
         Returns
         -------
-
+        rho : tf.Tensor
+            retina-like representation of k patches of increasing size
+            and decreasing resolution, centered around location loc within
+            image img
         """
 
         batch_size, img_H, img_W, C = img.shape
@@ -119,30 +100,73 @@ class GlimpseSensor:
 
         patches = tf.stack(patches)
 
-        # tf.summary.image(name='patches', tensor=zooms)
-
         return patches
 
 
-def glimpse_network(self, loc):
-    glimpse_input = self.glimpse_sensor(self.inputs, loc)
+class GlimpseNetwork(tf.keras.Model):
+    """Network that maps retina representation rho and
+    location loc into a hidden space; defines a trainable
+    bandwidth-limited sensor that produces the glimpse
+    representation g_t
 
-    glimpse_input = tf.reshape(glimpse_input,
-                               (self.batch_size,
-                                self.total_sensor_bandwidth))
+    Attributes
+    ----------
+    self.forward : forward pass through network, accepts image and
+        location tensors and returns tensor of glimpse representations g_t
+    """
 
-    l_hl = self._weight_variable((2, self.hl_size))
-    glimpse_hg = self._weight_variable((self.total_sensor_bandwidth, self.hg_size))
+    def __init__(self, g_w, k, s, c, h_g_units=128, h_l_units=128, h_gt_units=256):
+        """__init__ function for GlimpseNetwork
 
-    hg = tf.nn.relu(tf.matmul(glimpse_input, glimpse_hg))
-    hl = tf.nn.relu(tf.matmul(loc, l_hl))
+        Parameters
+        ----------
+        g_w : int
+            size of square patches extracted by glimpse sensor.
+        k : int
+            number of patches to extract per glimpse.
+        s : int
+            scaling factor that controls size of successive patches.
+        c : int
+            number of channels in each image.
+        h_g_units : int
+            number of units in fully-connected layer for retina-like representation rho.
+            Default is 128.
+        h_l_units : int
+            number of units in fully-connected layer for location l.
+            Default is 128.
+        h_gt_units : int
+            number of units in fully-connected layer for output g_t. This must be equal
+            to the number of hidden units in the core network. Default is 256.
+        """
+        super(GlimpseNetwork, self).__init__()
+        self.glimpse_sensor = GlimpseNetwork(g_w=g_w, k=k, s=s)
+        self.theta_g_0 = tf.keras.layers.Dense(units=h_g_units, activation='ReLu')
+        self.theta_g_1 = tf.keras.layers.Dense(units=h_l_units, activation='ReLu')
+        self.theta_g_2 = tf.keras.layers.Dense(units=h_gt_units, activation='ReLu')
 
-    hg_g = self._weight_variable((hg_size, g_size))
-    hl_g = self._weight_variable((hl_size, g_size))
+    def forward(self, img, loc):
+        """
 
-    g = tf.nn.relu(tf.matmul(hg, hg_g) + tf.matmul(hl, hl_g))
+        Parameters
+        ----------
+        img : tf.Tensor
+            with shape (B, H, W, C). Minibatch of images.
+        loc : tf.Tensor
+            with shape (B, 2). Location of retina "fixation",
+            in normalized co-ordinates where center of image is (0,0),
+            upper left corner is (-1,-1), and lower right corner is (1,1).
 
-    return g
+        Returns
+        -------
+        g_t : tf.Tensor
+            glimpse representation, output by glimpse network
+        """
+
+        rho = self.glimpse_sensor.glimpse(img, loc)
+        h_g = self.theta_g_0(rho)
+        h_l = self.theta_g_1(loc)
+        g_t = self.theta_g_2(h_g + h_l)
+        return g_t
 
 
 def _get_next_input(self, output, i):

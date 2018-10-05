@@ -12,8 +12,8 @@ import tensorflow as tf
 from tensorflow.contrib import seq2seq
 from tensorflow.nn import rnn_cell
 
-from .decorators import define_scope
-from . import graphs
+
+from . import modules
 
 
 
