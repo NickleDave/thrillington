@@ -118,7 +118,7 @@ class GlimpseNetwork(tf.keras.Model):
         location tensors and returns tensor of glimpse representations g_t
     """
 
-    def __init__(self, g_w, k, s, c, h_g_units=128, h_l_units=128, h_gt_units=256):
+    def __init__(self, g_w, k, s, h_g_units=128, h_l_units=128, h_gt_units=256):
         """__init__ function for GlimpseNetwork
 
         Parameters
@@ -129,8 +129,6 @@ class GlimpseNetwork(tf.keras.Model):
             number of patches to extract per glimpse.
         s : int
             scaling factor that controls size of successive patches.
-        c : int
-            number of channels in each image.
         h_g_units : int
             number of units in fully-connected layer for retina-like representation rho.
             Default is 128.
@@ -147,12 +145,12 @@ class GlimpseNetwork(tf.keras.Model):
         self.theta_g_1 = tf.keras.layers.Dense(units=h_l_units, activation='ReLu')
         self.theta_g_2 = tf.keras.layers.Dense(units=h_gt_units, activation='ReLu')
 
-    def forward(self, img, loc):
+    def forward(self, images, loc):
         """
 
         Parameters
         ----------
-        img : tf.Tensor
+        images : tf.Tensor
             with shape (B, H, W, C). Minibatch of images.
         loc : tf.Tensor
             with shape (B, 2). Location of retina "fixation",
@@ -165,7 +163,7 @@ class GlimpseNetwork(tf.keras.Model):
             glimpse representation, output by glimpse network
         """
 
-        rho = self.glimpse_sensor.glimpse(img, loc)
+        rho = self.glimpse_sensor.glimpse(images, loc)
         h_g = self.theta_g_0(rho)
         h_l = self.theta_g_1(loc)
         g_t = self.theta_g_2(h_g + h_l)
