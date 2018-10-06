@@ -1,3 +1,13 @@
+"""modules for RAM model, from [1]_.
+Based on two implementations:
+https://github.com/seann999/tensorflow_mnist_ram
+https://github.com/kevinzakka/recurrent-visual-attention
+
+.. [1] Mnih, Volodymyr, Nicolas Heess, and Alex Graves.
+   "Recurrent models of visual attention."
+   Advances in neural information processing systems. 2014.
+"""
+
 import tensorflow as tf
 from tensorflow.contrib import seq2seq
 from tensorflow.nn import rnn_cell
@@ -14,7 +24,7 @@ class GlimpseSensor(tf.keras.Model):
         Parameters
         ----------
         g_w : int
-            length of one side of square patches in glimpes extracted by glimpse sensor.
+            length of one side of square patches in glimpses extracted by glimpse sensor.
             Default is 8.
         k : int
             number of patches that the retina encoding rho(x,l) extracts
@@ -27,16 +37,16 @@ class GlimpseSensor(tf.keras.Model):
         self.k = k
         self.s = s
 
-    def glimpse(self, img, loc):
+    def glimpse(self, images, loc_normd):
         """take a "glimpse" of a batch of images.
         Returns retina-like representation rho(img, loc)
         consisting of patches from each image.
 
         Parameters
         ----------
-        img : tf.Tensor
+        images : tf.Tensor
             with shape (B, H, W, C). Minibatch of images.
-        loc : tf.Tensor
+        loc_normd : tf.Tensor
             with shape (B, 2). Location of retina "fixation",
             in normalized co-ordinates where center of image is (0,0),
             upper left corner is (-1,-1), and lower right corner is (1,1).
@@ -44,62 +54,56 @@ class GlimpseSensor(tf.keras.Model):
         Returns
         -------
         rho : tf.Tensor
+            with shape (B, k, g_w, g_w,
             retina-like representation of k patches of increasing size
             and decreasing resolution, centered around location loc within
             image img
         """
-
-        batch_size, img_H, img_W, C = img.shape
+        batch_size, img_H, img_W, C = images.shape
         # convert image co-ordinates from normalized to co-ordinates within
         # the specific size of the images
-        loc[:, 0] = ((loc[:, 0] + 1)/2) + img_H
-        loc[:, 1] = ((loc[:, 1] + 1) / 2) + img_W
+        loc_0 = ((loc_normd[:, 0] + 1) / 2) * img_H
+        loc_0 = tf.cast(tf.round(loc_0), tf.int32)
+        loc_1 = ((loc_normd[:, 1] + 1) / 2) * img_W
+        loc_1 = tf.cast(tf.round(loc_1), tf.int32)
+        loc = tf.stack([loc_0, loc_1], axis=1)
 
-        # compute top left corner of patches
-        patch_x = loc[:, 0] - (img_H // 2)
-        patch_y = loc[:, 1] - (img_W // 2)
-
-        patches = []
-
-        # process each image individually
+        rho = []
         for ind in range(batch_size):
-            img_patches = []
-            one_img = img[ind, :, :, :]
-            max_radius = self.g_w * (2 ** (self.k - 1))
-            offset = max_radius
+            img = images[ind, :, :, :]
+            patches = []
+            for patch_num in range(self.k):
+                size = self.g_w * (self.s ** patch_num)
 
-            # pad image with zeros
-            one_img = tf.image.pad_to_bounding_box(one_img, offset, offset,
-                                                   max_radius * 2 + mnist_size,
-                                                   max_radius * 2 + mnist_size)
+                # pad image with zeros
+                # (in case patch at current location extends beyond edges of image)
+                img_padded = tf.image.pad_to_bounding_box(img,
+                                                          offset_height=size,
+                                                          offset_width=size,
+                                                          target_height=(size * 2) + img_H,
+                                                          target_width=(size * 2) + img_W)
 
-            for i in range(self.k):
-                r = int(self.min_radius * (2 ** (i - 1)))
+                # compute top left corner of patch
+                patch_x = loc[ind, 0] - (size // 2) + size
+                patch_y = loc[ind, 1] - (size // 2) + size
 
-                d_raw = 2 * r
-                d = tf.constant(d_raw, shape=[1])
+                patch = tf.slice(img_padded,
+                                 begin=tf.stack([patch_x, patch_y, 0]),
+                                 size=tf.stack([size, size, C])
+                                 )
+                if size == self.g_w:
+                    # convert to float32 to be consistent with
+                    # tensors output after resizing
+                    patch = tf.cast(patch, dtype=tf.float32)
+                else:
+                    # resize cropped image to (size x size)
+                    patch = tf.image.resize_images(patch, size=(self.g_w, self.g_w))
+                patches.append(patch)
 
-                d = tf.tile(d, [2])
+            rho.append(patches)
 
-                loc_k = loc[k, :]
-                adjusted_loc = offset + loc_k - r
-
-                one_img2 = tf.reshape(one_img, (one_img.get_shape()[0].value,
-                                                one_img.get_shape()[1].value))
-
-                # crop image to (d x d)
-                patch = tf.slice(one_img2, adjusted_loc, d)
-
-                # resize cropped image to (sensorBandwidth x sensorBandwidth)
-                patch = tf.image.resize_bilinear(tf.reshape(patch, (1, d_raw, d_raw, 1)), (sensorBandwidth, sensorBandwidth))
-                patch = tf.reshape(patch, (sensorBandwidth, sensorBandwidth))
-                img_patches.append(patch)
-
-            patches.append(tf.stack(img_patches))
-
-        patches = tf.stack(patches)
-
-        return patches
+        rho = tf.stack(rho)
+        return rho
 
 
 class GlimpseNetwork(tf.keras.Model):
