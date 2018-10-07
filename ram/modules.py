@@ -170,12 +170,121 @@ class GlimpseNetwork(tf.keras.Model):
         return g_t
 
 
-def _get_next_input(self, output, i):
-    mean_loc = tf.tanh(tf.matmul(output, h_l_out))
-    mean_locs.append(mean_loc)
+class CoreNetwork(tf.Keras.model):
+    """RNN that maintains an internal state which summarizes
+    information extracted from the history of past observations.
+    The external input to the network is the glimpse feature
+    vector g_t.
 
-    sample_loc = mean_loc + tf.random_normal(mean_loc.get_shape(), 0, loc_sd)
+    The output h_t = f_h(h_t_minus_1, g_t; theta_h) where theta_h
+    is parameterized by the layers listed below in Attributes.
 
-    sampled_locs.append(sample_loc)
+    Attributes
+    ----------
+    self.linear_h_t_minus_1 : linear layer of units that accepts
+        hidden state from the last time step as an input
+    self.linear_g_t : linear layer of units that accepts the
+        glimpse feature vector g_t as an input
 
-    return get_glimpse(sample_loc)
+    So h_t = f_h(h_t_minus_1, g_t) =
+        Rect(Linear(h_t_minus_1) + Linear(g_t))
+    """
+
+    def __init__(self, hidden_size=256):
+        """__init__ function for CoreNetwork.
+        Note that in [1]_ the network as implemented here is only
+        used for classification; an LSTM was used for dynamic
+        environments.
+
+        Parameters
+        ----------
+        hidden_size : int
+            Number of units in hidden layers that maintain internal state.
+            Default is 256.
+        """
+        super(CoreNetwork, self).__init__()
+        self.hidden_size = hidden_size
+        self.linear_h_t_minus_1 = tf.keras.layers.Dense(units=hidden_size)
+        self.linear_g_t = tf.keras.layers.Dense(units=hidden_size)
+
+    def forward(self, g_t, h_t_minus_1):
+        """computes forward pass through CoreNetwork
+
+        Parameters
+        ----------
+        g_t : tf.Tensor
+            glimpse feature vector
+        h_t_minus_1 : tf.Tensor
+            output of CoreNetwork from previous time step
+
+        Returns
+        -------
+        h_t : tf.Tensor
+            = f_h(h_t_minus_1, g_t) = Rect(Linear(h_t_minus_1) + Linear(g_t))
+            = tf.relu(self.linear_g_t(g_t) + self.linear_h_t_minus_1(h_t_minus_1))
+        """
+        h_t = self.linear_g_t(g_t) + self.linear_h_t_minus_1(h_t_minus_1)
+        h_t = tf.nn.relu(h_t)
+        return h_t
+
+
+class LocationNetwork(tf.keras.Model):
+    """Uses internal state `h_t` of core network
+    to produce location coordinates `l_t` for the
+    next time step.
+
+    The location network is a fully-connected layer
+    that parameterizes a normal distribution with
+    mean mu and a constant standard deviation sigma
+    (specified by the user). Locations are drawn from
+    this distribution on each time step, by passing
+    the hidden state h_t through the location network l_t.
+
+    Attributes
+    ----------
+    self.forward
+    """
+    def __init__(self, loc_std, output_size=2):
+        """__init__ for LocationNetwork
+
+        Parameters
+        ----------
+        loc_std : float
+            standard deviation of normal distribution from which
+            location co-ordinates are drawn.
+        output_size : int
+            dimensionality of output of fully connected layer
+            in location network. Default is 2, i.e. x and y co-ordinates
+            of a location.
+        """
+        super(LocationNetwork, self).__init__()
+        self.loc_std = loc_std
+        self.fc = tf.keras.layers.Dense(units=output_size, activation='tanh')
+
+    def forward(self, h_t):
+        """forward pass through LocationNetwork.
+        Ues location policy to compute l_t, the location to glimpse next,
+        given internal state `h_t` of core network.
+
+        Passes h_t through a fully connected layer with tan_h activation
+        to clamp the output between [-1, 1]. This results in mu of
+        distribution with standard deviation self.loc_std. The location
+        l_t is then drawn from this distribution then returned.
+
+        Parameters
+        ----------
+        h_t : tf.Tensor
+            with shape (B, num_hidden). Output of core network.
+
+        Returns
+        -------
+        mu : tf.Tensor
+            with shape (B, 1). mu parameter for normal distribution
+            from which l_t was drawn.
+        l_t : tf.Tensor
+            with shape (B, 2)
+        """
+        mu = self.fc(h_t)
+        noise = tf.random_normal(mu.get_shape(), stddev=self.loc_sd)
+        l_t = tf.truncated_normal(mu + noise)  # run through tanh again to bound between -1 and 1
+        return mu, l_t
