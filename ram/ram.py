@@ -35,13 +35,14 @@ class RAM:
     def __init__(self,
                  g_w=8,
                  k=3,
+                 s=2,
                  hg_size=128,
                  hl_size=128,
                  g_size=256,
                  hidden_size=256,
                  glimpses=6,
                  num_classes=10,
-                 loc_sd=0.1
+                 loc_std=0.1
                  ):
         """__init__ for RAM class
 
@@ -54,23 +55,30 @@ class RAM:
             number of patches that the glimpse sensor extracts
             at location l from image x and returns in the
             retina-like encoding rho(x,l). Default is 3.
+        s : int
+            scaling factor, size to increase each successive
+            patch in one glimpse, i.e. size of patch k will
+            be g_w * s**k. Default is 2.
         hg_size : int
-
+            Size of hidden layer (number of units) in GlimpseNetwork
+            that embeds glimpse
         hl_size : int
-
+            Size of hidden layer (number of units) in GlimpseNetwork
+            that embeds location
         g_size : int
-
+            Size of hidden layer (number of units) in GlimpseNetwork
+            that produces glimpse feature vector by combining
         hidden_size : int
-
+            Size of hidden layer (number of units) in CoreNetwork
         glimpses : int
-
+            Number of glimpses to take before acting.
         num_classes : int
-
-        learning_rate : float
-
-        max_iters : int
-
-        loc_sd : float
+            Number of classes, i.e. for MNIST, num_classes = 10
+        loc_std : float
+            Standard deviation of two-component Gaussian from which
+            locations are drawn. The Gaussian distribution is
+            parameterized by the LocationNetwork, that takes the
+            hidden state h_t from the CoreNetwork as its input.
         """
 
         # user-specified properties
@@ -79,14 +87,15 @@ class RAM:
         self.hg_size = hg_size
         self.hl_size = hl_size
         self.g_size = g_size
-        self.cell_size = cell_size
+        self.hidden_size = hidden_size
         self.glimpses = glimpses
         self.num_classes = num_classes
-        self.loc_sd = loc_sd
+        self.loc_std = loc_std
 
-        self.glimpse_network = 
-        self.forward
-
+        self.glimpse_network = modules.GlimpseNetwork(g_w, k, s, hg_size,
+                                                      hl_size, g_size)
+        self.core_network = modules.CoreNetwork(hidden_size)
+        self.location_network = modules.LocationNetwork(loc_std)
 
     def step(self, images, l_t_minus_1, h_t_minus_1):
         """executes one time step of the model.
