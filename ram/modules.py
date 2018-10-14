@@ -9,8 +9,6 @@ https://github.com/kevinzakka/recurrent-visual-attention
 """
 
 import tensorflow as tf
-from tensorflow.contrib import seq2seq
-from tensorflow.nn import rnn_cell
 
 
 class GlimpseSensor(tf.keras.Model):
@@ -288,3 +286,65 @@ class LocationNetwork(tf.keras.Model):
         noise = tf.random_normal(mu.get_shape(), stddev=self.loc_sd)
         l_t = tf.truncated_normal(mu + noise)  # run through tanh again to bound between -1 and 1
         return mu, l_t
+
+
+class ActionNetwork(tf.keras.Model):
+    """Uses internal state `h_t` of CoreNetwork to
+    produce final output classification.
+
+    Feeds hidden state `h_t` through a fully-connected
+    layer follwed by a softmax to yield the vector of
+    output probabilities over the possible classes.
+    """
+    def __init__(self, num_actions):
+        super(ActionNetwork, self).__init__()
+        self.num_actions = num_actions
+        self.fc = tf.keras.layers.Dense(units=num_actions, activation='softmax')
+
+    def forward(self, h_t):
+        """forward pass through ActionNetwork
+
+        Returns
+        -------
+        a_t : tf.Tensor
+            "actions" to take, currently just classification
+        """
+        a_t = self.fc(h_t)
+        return a_t
+
+
+class BaselineNetwork(tf.keras.Model):
+    """Provides estimate of (state) value that does not depend on
+    actions taken. Its gradient is used during optimization
+    as a baseline, subtracted from the action-value gradient,
+    to reduce variance of the policy function gradient.
+
+    Attributes
+    ----------
+    self.fc
+        fully-connected layer with Rectified Linear activation
+    """
+    def __init__(self, output_size=1):
+        """__init__ for BaselineNetwork
+
+        Parameters
+        ----------
+        output_size : int
+            Number of units in fully-connected layer of BaselineNetwork.
+            Should be a scalar, since it is the estimate of R_t, and is
+            subtracted from . Default is 1.
+        """
+        super(BaselineNetwork, self).__init__()
+        self.output_size = output_size
+        self.fc = tf.keras.layers.Dense(units=output_size, activation='relu')
+
+    def forward(self, h_t):
+        """forward pass through BaselineNetwork.
+
+        Returns
+        -------
+        b_t : tf.Tensor
+            baseline network output with size (batch, self.output_size)
+        """
+        b_t = self.fc(h_t)
+        return b_t
