@@ -7,14 +7,11 @@ https://github.com/kevinzakka/recurrent-visual-attention
    "Recurrent models of visual attention."
    Advances in neural information processing systems. 2014.
 """
+from collections import namedtuple
 
 import tensorflow as tf
-from tensorflow.contrib import seq2seq
-from tensorflow.nn import rnn_cell
-
 
 from . import modules
-
 
 
 class RAM:
@@ -31,6 +28,8 @@ class RAM:
        "Recurrent models of visual attention."
        Advances in neural information processing systems. 2014.
     """
+
+    Out = namedtuple('out', ['h_t', 'l_t', 'b_t', 'log_probas', 'log_pi'])
 
     def __init__(self,
                  g_w=8,
@@ -96,6 +95,10 @@ class RAM:
                                                       hl_size, g_size)
         self.core_network = modules.CoreNetwork(hidden_size)
         self.location_network = modules.LocationNetwork(loc_std)
+        self.action_network = modules.ActionNetwork(num_classes)
+        self.baseline = modules.BaselineNetwork()
+
+        self.Out = namedtuple('Out', ['h_t', 'mu', 'l_t', 'log_pi', 'log_probas'])
 
     def step(self, images, l_t_minus_1, h_t_minus_1):
         """executes one time step of the model.
@@ -105,23 +108,28 @@ class RAM:
         images : tf.Tensor
             with shape (B, H, W, C). Images the network is glimpsing
         l_t_minus_1 : tf.Tensor
-            with shape (B, 2). Locations of glimpses from previous time step.
+            with shape (B, 2). Where to glimpse,
+            i.e., output of location network from previous time step.
         h_t_minus_1 : tf.Tensor
-            with shape (B, h_size). Hidden states of core network from previous time step.
+            with shape (B, h_size).
+            Hidden state of core network from previous time step.
 
         Returns
         -------
-
+        out : self.Out
+            namedtuple with fields h_t, mu, l_t, log_pi, and log_probas
         """
+        g_t = self.glimpse_network.forward(images, l_t_minus_1)
+        h_t = self.core_network.forward(g_t, h_t_minus_1)
+        mu, l_t = self.location_network.forward(h_t)
+        b_t = self.baseline(h_t)
+        log_pi = tf.distributions.Normal(
+            loc=mu, scale=self.loc_std).log_prob(value=l_t)
+        log_pi = tf.reduce_sum(log_pi, axis=1)
+        log_probas = self.action_network(h_t)
+        out = self.Out(h_t, mu, l_t, log_pi, log_probas)
+        return out
 
-        lstm_cell = rnn_cell.LSTMCell(cell_size, g_size, num_proj=cell_out_size)
-        initial_state = lstm_cell.zero_state(batch_size, tf.float32)
-        inputs = [initial_glimpse]
-        inputs.extend([0] * (glimpses - 1))
-        outputs, _ = seq2seq.rnn_decoder(inputs, initial_state, lstm_cell,
-                                         loop_function=self._get_next_input)
-        self._get_next_input(outputs[-1], 0)
-        return outputs
 
 
 
