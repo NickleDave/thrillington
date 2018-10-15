@@ -6,6 +6,7 @@ https://github.com/kevinzakka/recurrent-visual-attention
 .. [1] Mnih, Volodymyr, Nicolas Heess, and Alex Graves.
    "Recurrent models of visual attention."
    Advances in neural information processing systems. 2014.
+   https://arxiv.org/abs/1406.6247
 """
 from collections import namedtuple
 
@@ -27,6 +28,7 @@ class RAM:
     .. [1] Mnih, Volodymyr, Nicolas Heess, and Alex Graves.
        "Recurrent models of visual attention."
        Advances in neural information processing systems. 2014.
+       https://arxiv.org/abs/1406.6247
     """
 
     Out = namedtuple('out', ['h_t', 'l_t', 'b_t', 'log_probas', 'log_pi'])

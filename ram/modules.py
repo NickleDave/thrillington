@@ -6,6 +6,7 @@ https://github.com/kevinzakka/recurrent-visual-attention
 .. [1] Mnih, Volodymyr, Nicolas Heess, and Alex Graves.
    "Recurrent models of visual attention."
    Advances in neural information processing systems. 2014.
+   https://arxiv.org/abs/1406.6247
 """
 
 import tensorflow as tf
