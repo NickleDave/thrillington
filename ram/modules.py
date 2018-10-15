@@ -139,10 +139,10 @@ class GlimpseNetwork(tf.keras.Model):
             to the number of hidden units in the core network. Default is 256.
         """
         super(GlimpseNetwork, self).__init__()
-        self.glimpse_sensor = GlimpseNetwork(g_w=g_w, k=k, s=s)
-        self.theta_g_0 = tf.keras.layers.Dense(units=h_g_units, activation='ReLu')
-        self.theta_g_1 = tf.keras.layers.Dense(units=h_l_units, activation='ReLu')
-        self.theta_g_2 = tf.keras.layers.Dense(units=h_gt_units, activation='ReLu')
+        self.glimpse_sensor = GlimpseSensor(g_w=g_w, k=k, s=s)
+        self.theta_g_0 = tf.keras.layers.Dense(units=h_g_units, activation='relu')
+        self.theta_g_1 = tf.keras.layers.Dense(units=h_l_units, activation='relu')
+        self.theta_g_2 = tf.keras.layers.Dense(units=h_gt_units, activation='relu')
 
     def forward(self, images, loc):
         """
@@ -169,7 +169,7 @@ class GlimpseNetwork(tf.keras.Model):
         return g_t
 
 
-class CoreNetwork(tf.Keras.model):
+class CoreNetwork(tf.keras.Model):
     """RNN that maintains an internal state which summarizes
     information extracted from the history of past observations.
     The external input to the network is the glimpse feature
