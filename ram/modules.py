@@ -257,6 +257,7 @@ class LocationNetwork(tf.keras.Model):
             of a location.
         """
         super(LocationNetwork, self).__init__()
+        self.output_size = output_size
         self.loc_std = loc_std
         self.fc = tf.keras.layers.Dense(units=output_size, activation='tanh')
 
@@ -278,15 +279,18 @@ class LocationNetwork(tf.keras.Model):
         Returns
         -------
         mu : tf.Tensor
-            with shape (B, 1). mu parameter for normal distribution
-            from which l_t was drawn.
+            with shape (B, 2). mu parameter for normal distributions
+            from which l_t will be drawn. Since l_t is a location with
+            x and y co-ordinates, there is one value of mu for each
+            distribution (the one that represents the x co-ordinate and
+            the one that represents the y co-ordinate).
         l_t : tf.Tensor
             with shape (B, 2)
         """
         mu = self.fc(h_t)
-        noise = tf.random_normal(mu.get_shape(), stddev=self.loc_sd)
+        noise = tf.random_normal(mu.get_shape(), stddev=self.loc_std)
         # run through tanh again to bound between -1 and 1
-        l_t = tf.tan_h(mu + noise)
+        l_t = tf.tanh(mu + noise)
         return mu, l_t
 
 
