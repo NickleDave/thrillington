@@ -285,7 +285,8 @@ class LocationNetwork(tf.keras.Model):
         """
         mu = self.fc(h_t)
         noise = tf.random_normal(mu.get_shape(), stddev=self.loc_sd)
-        l_t = tf.truncated_normal(mu + noise)  # run through tanh again to bound between -1 and 1
+        # run through tanh again to bound between -1 and 1
+        l_t = tf.tan_h(mu + noise)
         return mu, l_t
 
 
