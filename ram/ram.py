@@ -68,7 +68,9 @@ class RAM:
     self.baseline_network : ram.modules.BaselineNetwork
 
     self.Out : namedtuple
-    with fields h_t, mu, l_t, a_t, and b_t
+    with fields rho, h_t, mu, l_t, a_t, and b_t
+        rho : tf.Tensor
+            glimpse representation extracted by glimpse sensor from image
         h_t : tf.Tensor
             hidden state of core network at time step t
         mu : tf.Tensor
@@ -161,7 +163,7 @@ class RAM:
         self.action_network = modules.ActionNetwork(num_classes)
         self.baseline = modules.BaselineNetwork()
 
-        self.Out = namedtuple('Out', ['h_t', 'mu', 'l_t', 'a_t', 'b_t'])
+        self.Out = namedtuple('Out', ['rho', 'h_t', 'mu', 'l_t', 'a_t', 'b_t'])
 
         self.initial_l_t_distrib = tf.distributions.Uniform(low=-1.0, high=1.0)
 
@@ -181,7 +183,7 @@ class RAM:
         # see https://r2rt.com/non-zero-initial-states-for-recurrent-neural-networks.html
         h_t = tf.zeros(shape=(self.batch_size, self.hidden_size,))
         l_t = self.initial_l_t_distrib.sample(sample_shape=(self.batch_size, 2))
-        out = self.Out(h_t, None, l_t, None, None)
+        out = self.Out(None, h_t, None, l_t, None, None)
         return out
 
     def step(self, images, l_t_minus_1, h_t_minus_1):
@@ -202,6 +204,8 @@ class RAM:
         -------
         out : self.Out
             namedtuple with fields h_t, mu, l_t, a_t, and b_t
+                rho : tf.Tensor
+                    glimpse representation extracted by glimpse sensor from image
                 h_t : tf.Tensor
                     hidden state of core network at time step t.
                 mu : tf.Tensor
@@ -218,12 +222,12 @@ class RAM:
                     Provides estimate of q(t) that is used during
                     training to reduce variance.
         """
-        g_t = self.glimpse_network.forward(images, l_t_minus_1)
+        rho, g_t = self.glimpse_network.forward(images, l_t_minus_1)
         h_t = self.core_network.forward(g_t, h_t_minus_1)
         mu, l_t = self.location_network.forward(h_t)
         b_t = self.baseline(h_t)
         a_t = self.action_network(h_t)
-        out = self.Out(h_t, mu, l_t, a_t, b_t)
+        out = self.Out(rho, h_t, mu, l_t, a_t, b_t)
         return out
 
 
