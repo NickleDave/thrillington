@@ -23,6 +23,39 @@ class RAM:
 
     Attributes
     ----------
+    self.g_w : int
+        length of one side of square patches in glimpses
+        extracted by glimpse sensor. Default is 8.
+    self.k : int
+        number of patches that the glimpse sensor extracts
+        at location l from image x and returns in the
+        retina-like encoding rho(x,l). Default is 3.
+    self.s : int
+        scaling factor, size to increase each successive
+        patch in one glimpse, i.e. size of patch k will
+        be g_w * s**k. Default is 2.
+    self.hg_size : int
+        Size of hidden layer (number of units) in GlimpseNetwork
+        that embeds glimpse
+    self.hl_size : int
+        Size of hidden layer (number of units) in GlimpseNetwork
+        that embeds location
+    self.g_size : int
+        Size of hidden layer (number of units) in GlimpseNetwork
+        that produces glimpse feature vector by combining
+    self.hidden_size : int
+        Size of hidden layer (number of units) in CoreNetwork
+    self.glimpses : int
+        Number of glimpses to take before acting.
+    self.batch_size : int
+        Number of samples per batch. Default is 10.
+    self.num_classes : int
+        Number of classes, i.e. for MNIST, num_classes = 10
+    self.loc_std : float
+        Standard deviation of two-component Gaussian from which
+        locations are drawn. The Gaussian distribution is
+        parameterized by the LocationNetwork, that takes the
+        hidden state h_t from the CoreNetwork as its input.
     self.glimpse_sensor : ram.modules.GlimpseSensor
         provides input to glimpse_network
         input size is square with length = self.sensor_bandwidth
@@ -111,6 +144,7 @@ class RAM:
         # user-specified properties
         self.g_w = g_w
         self.k = k
+        self.s = s
         self.hg_size = hg_size
         self.hl_size = hl_size
         self.g_size = g_size
@@ -129,7 +163,7 @@ class RAM:
 
         self.Out = namedtuple('Out', ['h_t', 'mu', 'l_t', 'a_t', 'b_t'])
 
-        self.initial_l_t = tf.distributions.Uniform(low=-1.0, high=1.0)
+        self.initial_l_t_distrib = tf.distributions.Uniform(low=-1.0, high=1.0)
 
     def reset(self):
         """get initial states for h_t and l_t.
@@ -138,7 +172,7 @@ class RAM:
         Returns
         -------
         h_t : tf.Tensor
-            of zeros
+            of zeros, with size (self.batch_size, self.hidden_size).
         l_t : tf.Tensor
             with size (self.batch_size, 2),
             drawn from uniform distribution between -1 and 1.
@@ -146,7 +180,7 @@ class RAM:
         # TODO: test other initializations for hidden state besides zeros
         # see https://r2rt.com/non-zero-initial-states-for-recurrent-neural-networks.html
         h_t = tf.zeros(shape=(self.batch_size, self.hidden_size,))
-        l_t = self.initial_l_t.sample(sample_shape=(self.batch_size, 2))
+        l_t = self.initial_l_t_distrib.sample(sample_shape=(self.batch_size, 2))
         out = self.Out(h_t, None, l_t, None, None)
         return out
 
@@ -156,7 +190,7 @@ class RAM:
         Parameters
         ----------
         images : tf.Tensor
-            with shape (B, H, W, C). Images the network is glimpsing
+            with shape (B, H, W, C). Images the network is glimpsing.
         l_t_minus_1 : tf.Tensor
             with shape (B, 2). Where to glimpse,
             i.e., output of location network from previous time step.
@@ -169,12 +203,12 @@ class RAM:
         out : self.Out
             namedtuple with fields h_t, mu, l_t, a_t, and b_t
                 h_t : tf.Tensor
-                    hidden state of core network at time step t
+                    hidden state of core network at time step t.
                 mu : tf.Tensor
-                    mu parameter of normal distribution from which l_t is drawn
+                    mu parameter of normal distribution from which l_t is drawn.
                 l_t : tf.Tensor
                     output of location network at time step t,
-                    will be location to glimpse on time step t plus one
+                    will be location to glimpse on time step t plus one.
                 a_t : tf.Tensor
                     output of action network at time step t.
                     For images, probability of classes. Only used at final step
