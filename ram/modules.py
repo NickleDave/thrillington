@@ -337,7 +337,7 @@ class BaselineNetwork(tf.keras.Model):
 
     Attributes
     ----------
-    self.fc
+    self.fc : tf.keras.layers.Dense
         fully-connected layer with Rectified Linear activation
     """
     def __init__(self, output_size=1):
