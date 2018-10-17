@@ -98,5 +98,22 @@ class TestLocationNetwork(tf.test.TestCase):
         assert l_t.shape == (batch_size, output_size)
 
 
+class TestBaselineNetwork(tf.test.TestCase):
+    def test_init(self):
+        output_size = 1
+        baseline_network = ram.modules.BaselineNetwork(output_size=output_size)
+        assert hasattr(baseline_network, 'output_size')
+        assert hasattr(baseline_network, 'fc')
+
+    def test_forward(self):
+        output_size = 1
+        baseline_network = ram.modules.BaselineNetwork(output_size=output_size)
+        batch_size = 10
+        hidden_size = 256
+        h_t = tf.random_uniform(shape=(batch_size, hidden_size))
+        b_t = baseline_network.forward(h_t)
+        assert b_t.shape == (batch_size, output_size)
+
+
 if __name__ == "__main__":
     tf.test.main()
