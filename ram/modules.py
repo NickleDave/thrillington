@@ -199,7 +199,6 @@ class CoreNetwork(tf.keras.Model):
     So h_t = f_h(h_t_minus_1, g_t) =
         Rect(Linear(h_t_minus_1) + Linear(g_t))
     """
-
     def __init__(self, hidden_size=256):
         """__init__ function for CoreNetwork.
         Note that in [1]_ the network as implemented here is only
