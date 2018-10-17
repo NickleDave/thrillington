@@ -58,6 +58,24 @@ class TestGlimpseNetwork(tf.test.TestCase):
                              glimpse_network.h_gt_units)
 
 
+class TestCoreNetwork(tf.test.TestCase):
+    def test_init(self):
+        hidden_size = 256
+        core_network = ram.modules.CoreNetwork(hidden_size=hidden_size)
+        assert hasattr(core_network, 'hidden_size')
+        assert hasattr(core_network, 'linear_h_t_minus_1')
+        assert hasattr(core_network, 'linear_g_t')
+
+    def test_forward(self):
+        batch_size = 10
+        hidden_size = 256
+        core_network = ram.modules.CoreNetwork(hidden_size=hidden_size)
+        h_t_minus_1 = tf.random_uniform(shape=(batch_size, hidden_size))
+        g_t = tf.random_uniform(shape=(batch_size, hidden_size))
+        h_t = core_network.forward(g_t, h_t_minus_1)
+        assert h_t.shape == (batch_size, hidden_size)
+
+
 class TestLocationNetwork(tf.test.TestCase):
     def test_init(self):
         loc_std = 0.01
