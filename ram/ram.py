@@ -1,7 +1,7 @@
 """RAM model, from [1]_.
 Based on two implementations:
-https://github.com/seann999/tensorflow_mnist_ram
 https://github.com/kevinzakka/recurrent-visual-attention
+https://github.com/seann999/tensorflow_mnist_ram
 
 .. [1] Mnih, Volodymyr, Nicolas Heess, and Alex Graves.
    "Recurrent models of visual attention."
@@ -17,20 +17,46 @@ from . import modules
 
 class RAM:
     """RAM model, from [1]_.
-    Based on this implementation: https://github.com/seann999/tensorflow_mnist_ram
+    Based on two implementations:
+    https://github.com/kevinzakka/recurrent-visual-attention
+    https://github.com/seann999/tensorflow_mnist_ram
 
     Attributes
     ----------
-    self.glimpse_sensor : provides input to glimpse_network
+    self.glimpse_sensor : ram.modules.GlimpseSensor
+        provides input to glimpse_network
         input size is square with length = self.sensor_bandwidth
-    self.glimpse_network :
+    self.glimpse_network : ram.modules.GlimpseNetwork
+
+    self.location_network : ram.modules.LocationNetwork
+
+    self.action_network : ram.modules.ActionNetwork
+
+    self.baseline_network : ram.modules.BaselineNetwork
+
+    self.Out : namedtuple
+    with fields h_t, mu, l_t, a_t, and b_t
+        h_t : tf.Tensor
+            hidden state of core network at time step t
+        mu : tf.Tensor
+            mu parameter of normal distribution from which l_t is drawn
+        l_t : tf.Tensor
+            output of location network at time step t,
+            will be location to glimpse on time step t plus one
+        a_t : tf.Tensor
+            output of action network at time step t.
+            For images, probability of classes. Only used at final step
+            as "action" of deciding class of image.
+        b_t : tf.Tensor
+            output of baseline network at time step t.
+            Provides estimate of q(t) that is used during
+
 
     .. [1] Mnih, Volodymyr, Nicolas Heess, and Alex Graves.
        "Recurrent models of visual attention."
        Advances in neural information processing systems. 2014.
        https://arxiv.org/abs/1406.6247
     """
-
     def __init__(self,
                  g_w=8,
                  k=3,
@@ -82,7 +108,6 @@ class RAM:
             parameterized by the LocationNetwork, that takes the
             hidden state h_t from the CoreNetwork as its input.
         """
-
         # user-specified properties
         self.g_w = g_w
         self.k = k
@@ -102,7 +127,7 @@ class RAM:
         self.action_network = modules.ActionNetwork(num_classes)
         self.baseline = modules.BaselineNetwork()
 
-        self.Out = namedtuple('Out', ['h_t', 'b_t', 'l_t', 'mu', 'log_pi', 'log_probas'])
+        self.Out = namedtuple('Out', ['h_t', 'mu', 'l_t', 'a_t', 'b_t'])
 
         self.initial_l_t = tf.distributions.Uniform(low=-1.0, high=1.0)
 
@@ -122,7 +147,8 @@ class RAM:
         # see https://r2rt.com/non-zero-initial-states-for-recurrent-neural-networks.html
         h_t = tf.zeros(shape=(self.batch_size, self.hidden_size,))
         l_t = self.initial_l_t.sample(sample_shape=(self.batch_size, 2))
-        return h_t, l_t
+        out = self.Out(h_t, None, l_t, None, None)
+        return out
 
     def step(self, images, l_t_minus_1, h_t_minus_1):
         """executes one time step of the model.
@@ -141,18 +167,29 @@ class RAM:
         Returns
         -------
         out : self.Out
-            namedtuple with fields h_t, mu, l_t, log_pi, and log_probas
+            namedtuple with fields h_t, mu, l_t, a_t, and b_t
+                h_t : tf.Tensor
+                    hidden state of core network at time step t
+                mu : tf.Tensor
+                    mu parameter of normal distribution from which l_t is drawn
+                l_t : tf.Tensor
+                    output of location network at time step t,
+                    will be location to glimpse on time step t plus one
+                a_t : tf.Tensor
+                    output of action network at time step t.
+                    For images, probability of classes. Only used at final step
+                    as "action" of deciding class of image.
+                b_t : tf.Tensor
+                    output of baseline network at time step t.
+                    Provides estimate of q(t) that is used during
+                    training to reduce variance.
         """
         g_t = self.glimpse_network.forward(images, l_t_minus_1)
         h_t = self.core_network.forward(g_t, h_t_minus_1)
         mu, l_t = self.location_network.forward(h_t)
         b_t = self.baseline(h_t)
-
-        log_pi = tf.distributions.Normal(
-            loc=mu, scale=self.loc_std).log_prob(value=l_t)
-        log_pi = tf.reduce_sum(log_pi, axis=1)
-        log_probas = self.action_network(h_t)
-        out = self.Out(h_t, l_t, b_t, mu, log_pi, log_probas)
+        a_t = self.action_network(h_t)
+        out = self.Out(h_t, mu, l_t, a_t, b_t)
         return out
 
 
