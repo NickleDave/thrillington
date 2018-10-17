@@ -225,8 +225,8 @@ class RAM:
         rho, g_t = self.glimpse_network.forward(images, l_t_minus_1)
         h_t = self.core_network.forward(g_t, h_t_minus_1)
         mu, l_t = self.location_network.forward(h_t)
-        b_t = self.baseline(h_t)
-        a_t = self.action_network(h_t)
+        b_t = self.baseline.forward(h_t)
+        a_t = self.action_network.forward(h_t)
         out = self.Out(rho, h_t, mu, l_t, a_t, b_t)
         return out
 
