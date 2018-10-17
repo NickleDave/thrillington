@@ -13,7 +13,7 @@ class TestGlimpseSensor(tf.test.TestCase):
         assert hasattr(glimpse_sensor, 's')
         assert hasattr(glimpse_sensor, 'glimpse')
 
-    def test_forward(self):
+    def test_glimpse(self):
         batch_size = 10
         img_height = 28
         img_width = 28
@@ -27,6 +27,35 @@ class TestGlimpseSensor(tf.test.TestCase):
                              glimpse_sensor.g_w,
                              glimpse_sensor.g_w,
                              channels)
+
+
+class TestGlimpseNetwork(tf.test.TestCase):
+    def test_init(self):
+        glimpse_network = ram.modules.GlimpseNetwork()
+        assert hasattr(glimpse_network, 'g_w')
+        assert hasattr(glimpse_network, 'k')
+        assert hasattr(glimpse_network, 's')
+        assert hasattr(glimpse_network, 'h_g_units')
+        assert hasattr(glimpse_network, 'h_l_units')
+        assert hasattr(glimpse_network, 'h_gt_units')
+        assert hasattr(glimpse_network, 'glimpse_sensor')
+
+    def test_forward(self):
+        batch_size = 10
+        img_height = 28
+        img_width = 28
+        channels = 1
+        fake_images = tf.random_uniform(shape=(batch_size, img_height, img_width, channels))
+        loc_normd = tf.random_uniform(shape=(batch_size, 2), minval=-1, maxval=1)
+        glimpse_network = ram.modules.GlimpseNetwork()
+        rho, g_t = glimpse_network.forward(fake_images, loc_normd)
+        assert rho.shape == (batch_size,
+                             glimpse_network.k,
+                             glimpse_network.g_w,
+                             glimpse_network.g_w,
+                             channels)
+        assert g_t.shape == (batch_size,
+                             glimpse_network.h_gt_units)
 
 
 class TestLocationNetwork(tf.test.TestCase):
