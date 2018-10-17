@@ -58,7 +58,7 @@ class GlimpseSensor(tf.keras.Model):
             and decreasing resolution, centered around location loc within
             image img
         """
-        batch_size, img_H, img_W, C = images.shape
+        batch_size, img_H, img_W, C = images.shape.as_list()
         # convert image co-ordinates from normalized to co-ordinates within
         # the specific size of the images
         loc_0 = ((loc_normd[:, 0] + 1) / 2) * img_H
@@ -299,7 +299,7 @@ class ActionNetwork(tf.keras.Model):
     produce final output classification.
 
     Feeds hidden state `h_t` through a fully-connected
-    layer follwed by a softmax to yield the vector of
+    layer followed by a softmax to yield the vector of
     output probabilities over the possible classes.
     """
     def __init__(self, num_actions):
