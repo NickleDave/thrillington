@@ -117,7 +117,7 @@ class GlimpseNetwork(tf.keras.Model):
         location tensors and returns tensor of glimpse representations g_t
     """
 
-    def __init__(self, g_w, k, s, h_g_units=128, h_l_units=128, h_gt_units=256):
+    def __init__(self, g_w=8, k=3, s=2, h_g_units=128, h_l_units=128, h_gt_units=256):
         """__init__ function for GlimpseNetwork
 
         Parameters
@@ -139,6 +139,12 @@ class GlimpseNetwork(tf.keras.Model):
             to the number of hidden units in the core network. Default is 256.
         """
         super(GlimpseNetwork, self).__init__()
+        self.g_w = g_w
+        self.k = k
+        self.s = s
+        self.h_g_units = h_g_units
+        self.h_l_units = h_l_units
+        self.h_gt_units = h_gt_units
         self.glimpse_sensor = GlimpseSensor(g_w=g_w, k=k, s=s)
         self.theta_g_0 = tf.keras.layers.Dense(units=h_g_units, activation='relu')
         self.theta_g_1 = tf.keras.layers.Dense(units=h_l_units, activation='relu')
@@ -150,23 +156,28 @@ class GlimpseNetwork(tf.keras.Model):
         Parameters
         ----------
         images : tf.Tensor
-            with shape (B, H, W, C). Minibatch of images.
+            with shape (batch size, height, width, channels). Minibatch of images.
         loc : tf.Tensor
-            with shape (B, 2). Location of retina "fixation",
+            with shape (batch size, 2). Location of retina "fixation",
             in normalized co-ordinates where center of image is (0,0),
             upper left corner is (-1,-1), and lower right corner is (1,1).
 
         Returns
         -------
+        rho : tf.Tensor
+            with shape
+            (batch size, number of glimpses, glimpse size, glimpse size, channels);
+            Glimpse representation extracted by GlimpseSensor.
         g_t : tf.Tensor
             glimpse representation, output by glimpse network
         """
-
         rho = self.glimpse_sensor.glimpse(images, loc)
-        h_g = self.theta_g_0(rho)
+        batch_size, k, g, _, channels = rho.shape.as_list()
+        rho_vec = tf.reshape(rho, shape=(batch_size, k * g * g * channels))
+        h_g = self.theta_g_0(rho_vec)
         h_l = self.theta_g_1(loc)
         g_t = self.theta_g_2(h_g + h_l)
-        return g_t
+        return rho, g_t
 
 
 class CoreNetwork(tf.keras.Model):
