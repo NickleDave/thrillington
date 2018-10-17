@@ -5,6 +5,30 @@ import ram.modules
 tfe = tf.contrib.eager
 
 
+class TestGlimpseSensor(tf.test.TestCase):
+    def test_init(self):
+        glimpse_sensor = ram.modules.GlimpseSensor()
+        assert hasattr(glimpse_sensor, 'g_w')
+        assert hasattr(glimpse_sensor, 'k')
+        assert hasattr(glimpse_sensor, 's')
+        assert hasattr(glimpse_sensor, 'glimpse')
+
+    def test_forward(self):
+        batch_size = 10
+        img_height = 28
+        img_width = 28
+        channels = 1
+        fake_images = tf.random_uniform(shape=(batch_size, img_height, img_width, channels))
+        loc_normd = tf.random_uniform(shape=(batch_size, 2), minval=-1, maxval=1)
+        glimpse_sensor = ram.modules.GlimpseSensor()
+        rho = glimpse_sensor.glimpse(fake_images, loc_normd)
+        assert rho.shape == (batch_size,
+                             glimpse_sensor.k,
+                             glimpse_sensor.g_w,
+                             glimpse_sensor.g_w,
+                             channels)
+
+
 class TestLocationNetwork(tf.test.TestCase):
     def test_init(self):
         loc_std = 0.01
@@ -15,7 +39,7 @@ class TestLocationNetwork(tf.test.TestCase):
         assert hasattr(loc_net, 'forward')
 
     @tfe.run_test_in_graph_and_eager_modes()
-    def test_output(self):
+    def test_forward(self):
         batch_size = 10
         hidden_size = 256
         loc_std = 0.01
