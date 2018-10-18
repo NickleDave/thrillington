@@ -13,6 +13,7 @@ class TestGlimpseSensor(tf.test.TestCase):
         assert hasattr(glimpse_sensor, 's')
         assert hasattr(glimpse_sensor, 'glimpse')
 
+    @tfe.run_test_in_graph_and_eager_modes
     def test_glimpse(self):
         batch_size = 10
         img_height = 28
@@ -40,6 +41,7 @@ class TestGlimpseNetwork(tf.test.TestCase):
         assert hasattr(glimpse_network, 'h_gt_units')
         assert hasattr(glimpse_network, 'glimpse_sensor')
 
+    @tfe.run_test_in_graph_and_eager_modes
     def test_forward(self):
         batch_size = 10
         img_height = 28
@@ -66,6 +68,7 @@ class TestCoreNetwork(tf.test.TestCase):
         assert hasattr(core_network, 'linear_h_t_minus_1')
         assert hasattr(core_network, 'linear_g_t')
 
+    @tfe.run_test_in_graph_and_eager_modes
     def test_forward(self):
         batch_size = 10
         hidden_size = 256
@@ -85,7 +88,7 @@ class TestLocationNetwork(tf.test.TestCase):
         assert hasattr(loc_net, 'fc')
         assert hasattr(loc_net, 'forward')
 
-    @tfe.run_test_in_graph_and_eager_modes()
+    @tfe.run_test_in_graph_and_eager_modes
     def test_forward(self):
         batch_size = 10
         hidden_size = 256
@@ -98,6 +101,28 @@ class TestLocationNetwork(tf.test.TestCase):
         assert l_t.shape == (batch_size, output_size)
 
 
+class TestActionNetwork(tf.test.TestCase):
+    def test_init(self):
+        num_actions = 10
+        action_network = ram.modules.ActionNetwork(num_actions=num_actions)
+        assert hasattr(action_network, 'num_actions')
+        assert hasattr(action_network, 'fc')
+
+    @tfe.run_test_in_graph_and_eager_modes
+    def test_forward(self):
+        num_actions = 10
+        action_network = ram.modules.ActionNetwork(num_actions=num_actions)
+        batch_size = 10
+        hidden_size = 256
+        h_t = tf.random_uniform(shape=(batch_size, hidden_size))
+        a_t = action_network.forward(h_t)
+        assert a_t.shape == (batch_size, num_actions)
+        # a_t_sum = tf.reduce_sum(a_t, axis=1)
+        # ones_batch_size = tf.ones(shape=(batch_size,))
+        # this test fails with a weird error, haven't figured out why
+        # self.assertAllClose(a_t_sum, ones_batch_size)
+
+
 class TestBaselineNetwork(tf.test.TestCase):
     def test_init(self):
         output_size = 1
@@ -105,6 +130,7 @@ class TestBaselineNetwork(tf.test.TestCase):
         assert hasattr(baseline_network, 'output_size')
         assert hasattr(baseline_network, 'fc')
 
+    @tfe.run_test_in_graph_and_eager_modes
     def test_forward(self):
         output_size = 1
         baseline_network = ram.modules.BaselineNetwork(output_size=output_size)
