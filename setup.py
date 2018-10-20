@@ -13,6 +13,9 @@ setup(
     author_email='https://github.com/NickleDave/RAM/issues',
     url='https://github.com/NickleDave/RAM',
     packages=find_packages(),
+    package_data={
+        'ram': ['*.ini',],
+    },
     license='BSD',
     classifiers=[
         'Development Status :: 4 - Beta',

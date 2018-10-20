@@ -1,53 +1,57 @@
+import os
 import configparser
 from collections import namedtuple
 
-config_keys = ['batch_size',
-               'learning_rate',
-               'max_iters',
-               'optimizer',
-               'momentum'
-               ]
+this_file_dir = os.path.dirname(__file__)
 
-ConfigTuple = namedtuple('config', config_keys)
-
-defaults = {
-    'batch_size': 32,
-    'learning_rate': 1e-3,
-    'max_iters': 1000000,
-    'optimizer': 'momentum',
-    'momentum': 0.9,
-}
+config_types = configparser.ConfigParser()
+config_types.read(os.path.join(this_file_dir, 'types.ini'))
 
 
-def parse_config(config_file):
+def parse_config(config_file=None):
     """read config.ini file with config parser,
-    returns namedtuple ConfigTuple with following
-    fields:
+    returns namedtuple ConfigTuple with
+    sections and options as attributes.
 
-    batch_size : int
-        size of batch to feed network. Default is 32.
-    learning_rate : float
-        learning rate for training network. Default is 1e-3.
-    max_iters: int
-        maximum number of iterations, i.e. training epochs.
-        Default is 1000000.
-    optimizer : str
-        {'sgd', 'momentum'} where 'sgd' is Stochastic Gradient
-        Descent (SGD) and 'momentum' is SGD with a momentum
-        term. Default is 'momentum' (as in Mnih et al. 2014).
-    momentum : float
-        Value for momentum term. Only used if optimizer is
-        'momentum'. Default is 0.9 (as in Mnih et al. 2014).
+    Parameters
+    ----------
+    config_file : str
+        Path to a config.ini file. If None, the
+        default configuration is returned.
+        Default is None.
+
+    Returns
+    -------
+    config : namedtuple
+        where fields are sections of the config, and
+        values for those fields are also namedtuples,
+        with fields being options and values being the
+        values for those options from the config.ini file.
     """
-    config_parser = configparser.ConfigParser()
-    config_parser.read(config_file)
+    config = configparser.ConfigParser()
+    # first read defaults
+    config.read(os.path.join(this_file_dir, 'default.ini'))
+    # then replace values with any specified by user
+    if config_file is not None:
+        config.read(config_file)
 
-    config_vals = []
-    for config_key in config_keys:
-        if config_parser.has_option(option=config_key):
-            config_vals.append(config_parser[config_key])
-        else:
-            config_vals.append(defaults[config_key])
-    config_kwargs = dict(zip(config_keys, config_vals))
-    config = ConfigTuple(**config_kwargs)
+    sections = [key for key in list(config.keys()) if key != 'DEFAULT']
+    ConfigTuple = namedtuple('ConfigTuple', sections)
+    config_dict = {}
+    for section in sections:
+        section_keys = list(config[section].keys())
+        section_values = list(config[section].values())
+        SubTup = namedtuple(section, section_keys)
+        subtup_dict = {}
+        for key, val in zip(section_keys, section_values):
+            val_type = config_types[section][key]
+            if val_type == 'int':
+                typed_val = int(val)
+            elif val_type == 'float':
+                typed_val = float(val)
+            elif val_type == 'str':
+                typed_val = val
+            subtup_dict[key] = typed_val
+        config_dict[section] = SubTup(**subtup_dict)
+    config = ConfigTuple(**config_dict)
     return config
