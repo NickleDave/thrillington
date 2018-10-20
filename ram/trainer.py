@@ -24,6 +24,7 @@ class Trainer:
     def _train_one_epoch(self, img, lbl):
         for batch, (img, lbl) in enumerate(train_data.batch(batch_size)):
             # training loop
+            # training loop
             out_t_minus_1 = ram_model.reset()
 
             locs = []
@@ -66,7 +67,7 @@ class Trainer:
 
                 # repeat column vector n times where n = glimpses
                 # calculate reward
-                predicted = tf.argmax(out.a_t, output_type=tf.int32)  # a_t = predictions from last time step
+                predicted = tf.argmax(out.a_t, axis=1, output_type=tf.int32)  # a_t = predictions from last time step
                 R = tf.equal(predicted, lbl)
                 R = tf.cast(R, dtype=tf.float32)
                 # reshape reward to (batch size x number of glimpses)
@@ -86,14 +87,18 @@ class Trainer:
                 # sum up into hybrid loss
                 hybrid_loss = loss_action + loss_baseline + loss_reinforce
 
-            reinforce_grads = tape.gradient(loss_reinforce, ram_model.location_network.variables)
-            optimizer.apply_gradients(zip(reinforce_grads, ram_model.location_network.variables),
+            # apply reinforce loss **only** to location network and baseline network
+            lt_bt_params = [var for net in [ram_model.location_network,
+                                      ram_model.baseline]
+                      for var in net.variables]
+            reinforce_grads = tape.gradient(loss_reinforce, lt_bt_params)
+            optimizer.apply_gradients(zip(reinforce_grads, lt_bt_params),
                                       global_step=tf.train.get_or_create_global_step())
-
-            hybrid_grads = tape.gradient(hybrid_loss, [ram_model.glimpse_network.variables,
-                                                       ram_model.action_network.variables,
-                                                       ram_model.core_network.variables])
-            optimizer.apply_gradients(zip(hybrid_grads, [ram_model.glimpse_network.variables,
-                                                         ram_model.action_network.variables,
-                                                         ram_model.core_network.variables]),
+            # apply hybrid loss to glimpse network, core network, and action network
+            params = [var for net in [ram_model.glimpse_network,
+                                      ram_model.action_network,
+                                      ram_model.core_network]
+                      for var in net.variables]
+            hybrid_grads = tape.gradient(hybrid_loss, params)
+            optimizer.apply_gradients(zip(hybrid_grads, params),
                                       global_step=tf.train.get_or_create_global_step())
