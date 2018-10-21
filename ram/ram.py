@@ -11,11 +11,12 @@ https://github.com/seann999/tensorflow_mnist_ram
 from collections import namedtuple
 
 import tensorflow as tf
+from tensorflow.python.training.checkpointable import tracking
 
 from . import modules
 
 
-class RAM:
+class RAM(tracking.Checkpointable):
     """RAM model, from [1]_.
     Based on two implementations:
     https://github.com/kevinzakka/recurrent-visual-attention

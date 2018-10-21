@@ -8,6 +8,7 @@ https://github.com/seann999/tensorflow_mnist_ram
    Advances in neural information processing systems. 2014.
    https://arxiv.org/abs/1406.6247
 """
+import os
 import time
 from collections import namedtuple
 
@@ -61,17 +62,43 @@ class Trainer:
                                                         learning_rate=self.learning_rate)
         elif config.train.optimizer == 'sgd':
             self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate)
+        self.restore = config.train.restore
+        self.checkpoint_dir = os.path.abspath(config.train.checkpoint_dir)
+        if not os.path.isdir(self.checkpoint_dir):
+            os.makedirs(self.checkpoint_dir)
+        self.checkpoint_path = os.path.join(config.train.checkpoint_dir,
+                                            config.train.checkpoint_prefix)
+        self.checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
+                                                model=self.model,
+                                                optimizer_step=tf.train.get_or_create_global_step())
+
+    def load_checkpoint(self):
+        """loads model and optimizer from a checkpoint.
+        Called when config.train.restore is True"""
+        self.checkpointer.restore(
+            tf.train.latest_checkpoint(self.checkpoint_path))
+
+    def save_checkpoint(self):
+        """save model and optimizer to a checkpoint file"""
+        self.checkpointer.save(file_prefix=self.checkpoint_path)
 
     def train(self):
         """trains RAM model
         """
+        if self.restore:
+            print('config.train.restore is True,\n'
+                  f'loading model and optimizer from checkpoint: {self.checkpoint_path}')
+            self.load_checkpoint()
+        else:
+            print('config.train.resume is False,\n'
+                  f'will save new model and optimizer to checkpoint: {self.checkpoint_path}')
         for epoch in range(self.epochs):
             print(
-                '\nEpoch: {}/{} - learning rate: {:.6f}'.format(
-                    epoch+1, self.epochs, self.learning_rate)
+                f'\nEpoch: {epoch+1}/{self.epochs} - learning rate: {self.learning_rate:.6f}'
             )
             mean_acc, mean_loss = self._train_one_epoch()
             print(f'mean accuracy: {mean_acc}\nmean losses: {mean_loss}')
+            self.save_checkpoint()
 
     def _train_one_epoch(self):
         """helper function that trains for one epoch.
@@ -84,8 +111,8 @@ class Trainer:
 
         tic = time.time()
 
-        with tqdm(total=self.data.num_samples) as progress_bar:
-            for img, lbl in self.data.dataset.batch(self.batch_size):
+        with tqdm(total=self.num_samples) as progress_bar:
+            for img, lbl in self.dataset.batch(self.batch_size):
 
                 out_t_minus_1 = self.model.reset()
 
@@ -140,7 +167,8 @@ class Trainer:
                     R = tf.tile(R, tf.constant([1, self.model.glimpses]))
 
                     # compute losses for differentiable modules
-                    loss_action = tf.losses.softmax_cross_entropy(tf.one_hot(lbl, depth=self.model.num_classes), out.a_t)
+                    loss_action = tf.losses.softmax_cross_entropy(tf.one_hot(lbl, depth=self.model.num_classes),
+                                                                  out.a_t)
                     loss_baseline = tf.losses.mean_squared_error(baselines, R)
 
                     # compute loss for REINFORCE algorithm
