@@ -88,8 +88,8 @@ def fetch_images(images_file):
 def fetch_labels(labels_file):
     """Fetch MNIST labels data"""
     with open(labels_file, 'rb') as fd:
-        magic, size, = struct.unpack('>ii', fd.read(2 * 4))
-        labels = np.frombuffer(fd.read(), 'u1').reshape(size, 1)
+        magic, size = struct.unpack('>ii', fd.read(2 * 4))
+        labels = np.frombuffer(fd.read(), 'u1')
     # cast from uint8 to int32
     return labels.astype(np.int32)
 
@@ -150,7 +150,7 @@ def _dataset(directory, images_file, labels_file):
         for image, label in zip(images, labels):
             yield image, label
 
-    ds = tf.data.Dataset.from_generator(gen, (tf.float32, tf.int32), ((28, 28, 1), (1,)))
+    ds = tf.data.Dataset.from_generator(gen, (tf.float32, tf.int32), ((28, 28, 1), []))
     data = Data(dataset=ds, num_samples=len(labels))
     return data
 
