@@ -42,11 +42,17 @@ class Trainer:
             E.g., the MNIST training set,
             returned by calling ram.dataset.train.
         """
+        if data.num_samples % config.train.batch_size != 0:
+            raise ValueError(f'Number of training samples, {data.num_samples}, '
+                             f'is not evenly divisible by batch size, {config.train.batch_size}.\n'
+                             f'This will cause an error when training network;'
+                             f'please change either so that data.num_samples % config.train.batch_size == 0:')
         # apply model config
         self.model = ram.RAM(**config.model._asdict())
 
         # then unpack train config
-        self.data = data
+        self.dataset = data.dataset
+        self.num_samples = data.num_samples
         self.batch_size = config.train.batch_size
         self.learning_rate = config.train.learning_rate
         self.epochs = config.train.epochs
