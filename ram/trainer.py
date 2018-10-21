@@ -179,10 +179,10 @@ class Trainer:
 
         mn_acc = np.mean(accs)
 
-        mn_loss_reinforce = np.mean(np.concatenate(losses_reinforce))
-        mn_loss_baseline = np.mean(np.concatenate(losses_baseline))
-        mn_loss_action = np.mean(np.concatenate(losses_action))
-        mn_losses_hybrid = np.mean(np.concatenate(losses_hybrid))
+        mn_loss_reinforce = np.asarray(losses_reinforce).mean()
+        mn_loss_baseline = np.asarray(losses_baseline).mean()
+        mn_loss_action = np.asarray(losses_action).mean()
+        mn_losses_hybrid = np.asarray(losses_hybrid).mean()
 
         return mn_acc, LossTuple(mn_loss_reinforce,
                                  mn_loss_baseline,
