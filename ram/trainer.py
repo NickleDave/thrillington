@@ -8,6 +8,7 @@ https://github.com/seann999/tensorflow_mnist_ram
    Advances in neural information processing systems. 2014.
    https://arxiv.org/abs/1406.6247
 """
+import time
 from collections import namedtuple
 
 import tensorflow as tf
@@ -34,8 +35,11 @@ class Trainer:
         ----------
         config : namedtuple
             as returned by ram.utils.parse_config.
-        data : tf.data.Dataset object
-            such as the mnist training set,
+        data : ram.mnist.dataset.Data
+            subclass of NamedTuple that includes
+            a tensorflow dataset object and the
+            number of samples as fields.
+            E.g., the MNIST training set,
             returned by calling ram.dataset.train.
         """
         # apply model config
@@ -72,8 +76,11 @@ class Trainer:
         losses_hybrid = []
         accs = []
 
-        with tqdm(total=self.num_train) as progress_bar:
-            for batch_num, (img, lbl) in self.data.batch(self.batch_size):
+        tic = time.time()
+
+        with tqdm(total=self.data.num_samples) as progress_bar:
+            for img, lbl in self.data.dataset.batch(self.batch_size):
+
                 out_t_minus_1 = self.model.reset()
 
                 locs = []
@@ -119,7 +126,8 @@ class Trainer:
                     # Remember that action network output a_t becomes predictions at last time step
                     predicted = tf.argmax(out.a_t, axis=1, output_type=tf.int32)
                     R = tf.equal(predicted, lbl)
-                    accs.append(np.sum(R.numpy()) / R.numpy().shape[-1] * 100)
+                    acc = np.sum(R.numpy()) / R.numpy().shape[-1] * 100
+                    accs.append(acc)
                     R = tf.cast(R, dtype=tf.float32)
                     # reshape reward to (batch size x number of glimpses)
                     R = tf.expand_dims(R, axis=1)  # add axis
@@ -140,7 +148,7 @@ class Trainer:
 
                 # apply reinforce loss **only** to location network and baseline network
                 lt_bt_params = [var for net in [self.model.location_network,
-                                          self.model.baseline]
+                                                self.model.baseline]
                                 for var in net.variables]
                 reinforce_grads = tape.gradient(loss_reinforce, lt_bt_params)
                 self.optimizer.apply_gradients(zip(reinforce_grads, lt_bt_params),
@@ -158,6 +166,8 @@ class Trainer:
                 losses_baseline.append(loss_baseline.numpy())
                 losses_action.append(loss_action.numpy())
                 losses_hybrid.append(loss_hybrid.numpy())
+
+                toc = time.time()
 
                 progress_bar.set_description(
                     (
