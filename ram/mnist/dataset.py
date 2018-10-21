@@ -11,12 +11,15 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+#
+#  Modified from the original code for purposes of this project
 """tf.data.Dataset interface to the MNIST dataset."""
 import gzip
 import os
 import shutil
 import tempfile
 import urllib.request
+import struct
 
 import numpy as np
 import tensorflow as tf
@@ -73,41 +76,80 @@ def download(directory, filename):
     return filepath
 
 
-def dataset(directory, images_file, labels_file):
-    """Download and parse MNIST dataset."""
+def fetch_images(images_file):
+    """Fetch MNIST images"""
+    with open(images_file, 'rb') as fd:
+        magic, size, h, w = struct.unpack('>iiii', fd.read(4 * 4))
+        images = np.frombuffer(fd.read(), 'u1').reshape(size, h, w, 1)
+    return images
 
+
+def fetch_labels(labels_file):
+    """Fetch MNIST labels data"""
+    with open(labels_file, 'rb') as fd:
+        magic, size, = struct.unpack('>ii', fd.read(2 * 4))
+        labels = np.frombuffer(fd.read(), 'u1').reshape(size, 1)
+    return labels
+
+
+def normalize(images):
+    """
+    Normalize images to [0.0,1.0]
+    """
+    images = tf.cast(images, tf.float32)
+    images /= 255.
+    return images
+
+
+def _dataset(directory, images_file, labels_file):
+    """Helper function that downloads (if necessary) and parses MNIST dataset.
+    Instead of calling this directly, call the train or test functions.
+
+    Parameters
+    ----------
+    directory : str
+        Directory where raw MNIST files exist or should be downloaded
+    images_file : str
+        one of {'train-images-idx3-ubyte', 't10k-images-idx3-ubyte'}
+    labels_file : str
+        one of {'train-labels-idx1-ubyte', 't10k-labels-idx1-ubyte'}
+
+    Returns
+    -------
+    ds : tf.data.Dataset
+        that yields tuple pairs of:
+            img : tf.float32
+                images with shape (28, 28, 1) normalized to range [0.0, 1.0]
+            lbl : tf.uint8
+                labels with values 0-9
+    samples : int
+        number of samples in dataset
+    """
     images_file = download(directory, images_file)
     labels_file = download(directory, labels_file)
 
     check_image_file_header(images_file)
     check_labels_file_header(labels_file)
 
-    def decode_image(image):
-        # Normalize from [0, 255] to [0.0, 1.0]
-        image = tf.decode_raw(image, tf.uint8)
-        image = tf.cast(image, tf.float32)
-        image = tf.reshape(image, [784])
-        return image / 255.0
+    images = fetch_images(images_file)
+    images = normalize(images)
+    labels = fetch_labels(labels_file)
 
-    def decode_label(label):
-        label = tf.decode_raw(label, tf.uint8)  # tf.string -> [tf.uint8]
-        label = tf.reshape(label, [])  # label is a scalar
-        return tf.to_int32(label)
+    def gen():
+        for image, label in zip(images, labels):
+            yield image, label
 
-    images = tf.data.FixedLengthRecordDataset(
-        images_file, 28 * 28, header_bytes=16).map(decode_image)
-    images = images.map(lambda x: tf.reshape(x, shape=(28, 28, 1)))
-    labels = tf.data.FixedLengthRecordDataset(
-        labels_file, 1, header_bytes=8).map(decode_label)
-    return tf.data.Dataset.zip((images, labels))
+    ds = tf.data.Dataset.from_generator(gen, (tf.float32, tf.uint8), ((28, 28, 1), (1,)))
+
+    return ds, len(labels)
 
 
 def train(directory):
     """tf.data.Dataset object for MNIST training data."""
-    return dataset(directory, 'train-images-idx3-ubyte',
+    return _dataset(directory, 'train-images-idx3-ubyte',
                    'train-labels-idx1-ubyte')
 
 
 def test(directory):
     """tf.data.Dataset object for MNIST test data."""
-    return dataset(directory, 't10k-images-idx3-ubyte', 't10k-labels-idx1-ubyte')
+    return _dataset(directory, 't10k-images-idx3-ubyte', 't10k-labels-idx1-ubyte')
