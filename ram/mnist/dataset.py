@@ -20,6 +20,7 @@ import shutil
 import tempfile
 import urllib.request
 import struct
+from typing import NamedTuple
 
 import numpy as np
 import tensorflow as tf
@@ -89,7 +90,8 @@ def fetch_labels(labels_file):
     with open(labels_file, 'rb') as fd:
         magic, size, = struct.unpack('>ii', fd.read(2 * 4))
         labels = np.frombuffer(fd.read(), 'u1').reshape(size, 1)
-    return labels
+    # cast from uint8 to int32
+    return labels.astype(np.int32)
 
 
 def normalize(images):
@@ -99,6 +101,15 @@ def normalize(images):
     images = tf.cast(images, tf.float32)
     images /= 255.
     return images
+
+
+class Data(NamedTuple):
+    """represents a Tensorflow Dataset object and the number of samples in it"""
+    dataset: tf.data.Dataset
+    num_samples: int
+
+    def __repr__(self) -> str:
+        return f'<Data {self.dataset}, samples={self.num_samples}>'
 
 
 def _dataset(directory, images_file, labels_file):
@@ -139,17 +150,20 @@ def _dataset(directory, images_file, labels_file):
         for image, label in zip(images, labels):
             yield image, label
 
-    ds = tf.data.Dataset.from_generator(gen, (tf.float32, tf.uint8), ((28, 28, 1), (1,)))
-
-    return ds, len(labels)
+    ds = tf.data.Dataset.from_generator(gen, (tf.float32, tf.int32), ((28, 28, 1), (1,)))
+    data = Data(dataset=ds, num_samples=len(labels))
+    return data
 
 
 def train(directory):
     """tf.data.Dataset object for MNIST training data."""
-    return _dataset(directory, 'train-images-idx3-ubyte',
-                   'train-labels-idx1-ubyte')
+    return _dataset(directory,
+                    'train-images-idx3-ubyte',
+                    'train-labels-idx1-ubyte')
 
 
 def test(directory):
     """tf.data.Dataset object for MNIST test data."""
-    return _dataset(directory, 't10k-images-idx3-ubyte', 't10k-labels-idx1-ubyte')
+    return _dataset(directory,
+                    't10k-images-idx3-ubyte',
+                    't10k-labels-idx1-ubyte')
