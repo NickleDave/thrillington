@@ -1,6 +1,7 @@
 import os
 import configparser
 from collections import namedtuple
+from distutils.util import strtobool
 
 this_file_dir = os.path.dirname(__file__)
 
@@ -49,6 +50,8 @@ def parse_config(config_file=None):
                 typed_val = int(val)
             elif val_type == 'float':
                 typed_val = float(val)
+            elif val_type == 'bool':
+                typed_val = bool(strtobool(val))
             elif val_type == 'str':
                 typed_val = val
             subtup_dict[key] = typed_val
