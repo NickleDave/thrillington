@@ -18,7 +18,6 @@ class Glimpse(NamedTuple):
     """represents output of GlimpseSensor"""
     rho: tf.Tensor
     fixations: np.ndarray
-    top_left_corners: np.ndarray
 
 
 class GlimpseSensor(tf.keras.Model):
@@ -86,7 +85,6 @@ class GlimpseSensor(tf.keras.Model):
         fixations = tf.stack([loc_0, loc_1], axis=1)
 
         rho = []
-        top_left_corners = []
         for ind in range(batch_size):
             img = images[ind, :, :, :]
             patches = []
@@ -101,10 +99,10 @@ class GlimpseSensor(tf.keras.Model):
                                                           target_height=(size * 2) + img_H,
                                                           target_width=(size * 2) + img_W)
 
-                # compute top left corner of patch
-                patch_x = fixations[ind, 0] - (size // 2)
-                patch_y = fixations[ind, 1] - (size // 2)
-                top_left_corners.append(np.asarray([patch_x.numpy(), patch_y.numpy()]))
+                # compute top left corner of patch.
+                # note we add 'size' to compensate for padding
+                patch_x = fixations[ind, 0] - (size // 2) + size
+                patch_y = fixations[ind, 1] - (size // 2) + size
                 patch = tf.slice(img_padded,
                                  begin=tf.stack([patch_x, patch_y, 0]),
                                  size=tf.stack([size, size, C])
@@ -122,8 +120,7 @@ class GlimpseSensor(tf.keras.Model):
 
         rho = tf.stack(rho)
         fixations = fixations.numpy()
-        top_left_corners = np.asarray(top_left_corners)
-        return Glimpse(rho, fixations, top_left_corners)
+        return Glimpse(rho, fixations)
 
 
 class GlimpseNetwork(tf.keras.Model):

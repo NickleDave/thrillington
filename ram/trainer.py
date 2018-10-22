@@ -135,7 +135,6 @@ class Trainer:
                 if save_examples:
                     locs = []
                     fixations = []
-                    top_left_corners = []
 
                 with tf.GradientTape(persistent=True) as tape:
                     for t in range(self.model.glimpses):
@@ -146,7 +145,6 @@ class Trainer:
                         if save_examples:
                             locs.append(out.l_t.numpy()[:self.num_examples_to_save, :])
                             fixations.append(out.fixations[:self.num_examples_to_save, :])
-                            top_left_corners.append(out.top_left_corners[:self.num_examples_to_save, :])
 
                         # determine probability of choosing location l_t, given
                         # distribution parameterized by mu (output of location network)
@@ -237,15 +235,13 @@ class Trainer:
             fixations = np.asarray(fixations)
             fixations.dump(os.path.join(self.examples_dir,
                                         f'fixations_epoch_{current_epoch}'))
-            top_left_corners = np.asarray(top_left_corners)
-            top_left_corners.dump(os.path.join(self.examples_dir,
-                                   f'top_left_corners_epoch_{current_epoch}'))
-            img = img.numpy()[:self.num_examples_to_save]
-            img.dump(os.path.join(self.examples_dir,
-                                  f'images_epoch_{current_epoch}'))
             glimpses = out.rho.numpy()[:self.num_examples_to_save]
             glimpses.dump(os.path.join(self.examples_dir,
                                        f'glimpses_epoch_{current_epoch}'))
+            img = img.numpy()[:self.num_examples_to_save]
+            img.dump(os.path.join(self.examples_dir,
+                                  f'images_epoch_{current_epoch}'))
+
             pred = predicted.numpy()[:self.num_examples_to_save]
             pred.dump(os.path.join(self.examples_dir,
                                    f'predictions_epoch_{current_epoch}'))

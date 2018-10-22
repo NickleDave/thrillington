@@ -157,6 +157,8 @@ def _dataset(directory, images_file, labels_file, num_samples=None):
         sample_inds = np.random.choice(np.arange(images.shape[0]), size=(num_samples,))
         images = images[sample_inds, :, :, :]
         labels = labels[sample_inds]
+    else:
+        sample_inds = np.arange(len(labels))
 
     images = normalize(images)
 
