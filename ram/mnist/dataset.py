@@ -113,7 +113,7 @@ class Data(NamedTuple):
         return f'<Data {self.dataset}, samples={self.num_samples}>'
 
 
-def _dataset(directory, images_file, labels_file, num_samples):
+def _dataset(directory, images_file, labels_file, num_samples=None):
     """Helper function that downloads (if necessary) and parses MNIST dataset.
     Instead of calling this directly, call the train or test functions.
 
@@ -126,7 +126,8 @@ def _dataset(directory, images_file, labels_file, num_samples):
     labels_file : str
         one of {'train-labels-idx1-ubyte', 't10k-labels-idx1-ubyte'}
     num_samples : int
-        number of samples to return from
+        number of samples to return from. If None, uses all samples
+        in dataset. Default is None.
 
     Returns
     -------
@@ -146,16 +147,18 @@ def _dataset(directory, images_file, labels_file, num_samples):
     check_labels_file_header(labels_file)
 
     images = fetch_images(images_file)
-
-    if images.shape[0] < num_samples:
-        raise ValueError(f'Number of samples in dataset, {images.shape[0]}, is less than'
-                         f'number of samples to draw from that set, {num_samples}')
-
-    sample_inds = np.random.choice(np.arange(images.shape[0]), size=(num_samples,))
-    images = images[sample_inds, :, :, :]
-    images = normalize(images)
     labels = fetch_labels(labels_file)
-    labels = labels[sample_inds]
+
+    if num_samples:
+        if images.shape[0] < num_samples:
+            raise ValueError(f'Number of samples in dataset, {images.shape[0]}, is less than'
+                             f'number of samples to draw from that set, {num_samples}')
+
+        sample_inds = np.random.choice(np.arange(images.shape[0]), size=(num_samples,))
+        images = images[sample_inds, :, :, :]
+        labels = labels[sample_inds]
+
+    images = normalize(images)
 
     def gen():
         for image, label in zip(images, labels):
@@ -166,7 +169,7 @@ def _dataset(directory, images_file, labels_file, num_samples):
     return data
 
 
-def train(directory, num_samples):
+def train(directory, num_samples=None):
     """tf.data.Dataset object for MNIST training data."""
     return _dataset(directory=directory,
                     images_file='train-images-idx3-ubyte',
@@ -174,7 +177,7 @@ def train(directory, num_samples):
                     num_samples=num_samples)
 
 
-def test(directory, num_samples):
+def test(directory, num_samples=None):
     """tf.data.Dataset object for MNIST test data."""
     return _dataset(directory=directory,
                     images_file='t10k-images-idx3-ubyte',
