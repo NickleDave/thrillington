@@ -10,10 +10,14 @@ https://github.com/seann999/tensorflow_mnist_ram
 """
 from collections import namedtuple
 
+import numpy as np
 import tensorflow as tf
 from tensorflow.python.training.checkpointable import tracking
 
 from . import modules
+
+
+StateAndMeta = namedtuple('StateAndMeta', ['rho', 'fixations', 'top_left_corners', 'h_t', 'mu', 'l_t', 'a_t', 'b_t'])
 
 
 class RAM(tracking.Checkpointable):
@@ -164,8 +168,6 @@ class RAM(tracking.Checkpointable):
         self.action_network = modules.ActionNetwork(num_classes)
         self.baseline = modules.BaselineNetwork()
 
-        self.Out = namedtuple('Out', ['rho', 'h_t', 'mu', 'l_t', 'a_t', 'b_t'])
-
         self.initial_l_t_distrib = tf.distributions.Uniform(low=-1.0, high=1.0)
 
     def reset(self):
@@ -184,7 +186,7 @@ class RAM(tracking.Checkpointable):
         # see https://r2rt.com/non-zero-initial-states-for-recurrent-neural-networks.html
         h_t = tf.zeros(shape=(self.batch_size, self.hidden_size,))
         l_t = self.initial_l_t_distrib.sample(sample_shape=(self.batch_size, 2))
-        out = self.Out(None, h_t, None, l_t, None, None)
+        out = StateAndMeta(None, None, None, h_t, None, l_t, None, None)
         return out
 
     def step(self, images, l_t_minus_1, h_t_minus_1):
@@ -203,7 +205,7 @@ class RAM(tracking.Checkpointable):
 
         Returns
         -------
-        out : self.Out
+        State : self.Out
             namedtuple with fields h_t, mu, l_t, a_t, and b_t
                 rho : tf.Tensor
                     glimpse representation extracted by glimpse sensor from image
@@ -223,13 +225,13 @@ class RAM(tracking.Checkpointable):
                     Provides estimate of q(t) that is used during
                     training to reduce variance.
         """
-        rho, g_t = self.glimpse_network.forward(images, l_t_minus_1)
+        glimpse, g_t = self.glimpse_network.forward(images, l_t_minus_1)
         h_t = self.core_network.forward(g_t, h_t_minus_1)
         mu, l_t = self.location_network.forward(h_t)
         b_t = self.baseline.forward(h_t)
         a_t = self.action_network.forward(h_t)
-        out = self.Out(rho, h_t, mu, l_t, a_t, b_t)
-        return out
+        return StateAndMeta(glimpse.rho, glimpse.fixations, glimpse.top_left_corners,
+                            h_t, mu, l_t, a_t, b_t)
 
 
 

@@ -49,7 +49,8 @@ class Trainer:
                              f'This will cause an error when training network;'
                              f'please change either so that data.num_samples % config.train.batch_size == 0:')
         # apply model config
-        self.model = ram.RAM(**config.model._asdict())
+        self.model = ram.RAM(batch_size=config.train.batch_size,
+                             **config.model._asdict())
 
         # then unpack train config
         self.dataset = data.dataset
@@ -71,6 +72,12 @@ class Trainer:
         self.checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
                                                 model=self.model,
                                                 optimizer_step=tf.train.get_or_create_global_step())
+        if hasattr(config.train, 'save_examples_every'):
+            self.save_examples_every = config.train.save_examples_every
+            self.examples_dir = os.path.abspath(config.train.examples_dir)
+            if not os.path.isdir(self.examples_dir):
+                os.makedirs(self.examples_dir)
+            self.num_examples_to_save = config.train.num_examples_to_save
 
     def load_checkpoint(self):
         """loads model and optimizer from a checkpoint.
@@ -92,15 +99,21 @@ class Trainer:
         else:
             print('config.train.resume is False,\n'
                   f'will save new model and optimizer to checkpoint: {self.checkpoint_path}')
-        for epoch in range(self.epochs):
+        for epoch in range(1, self.epochs+1):
             print(
-                f'\nEpoch: {epoch+1}/{self.epochs} - learning rate: {self.learning_rate:.6f}'
+                f'\nEpoch: {epoch}/{self.epochs} - learning rate: {self.learning_rate:.6f}'
             )
-            mean_acc, mean_loss = self._train_one_epoch()
+
+            if epoch % self.save_examples_every == 0:
+                save_examples = True
+            else:
+                save_examples = False
+
+            mean_acc, mean_loss = self._train_one_epoch(current_epoch=epoch, save_examples=save_examples)
             print(f'mean accuracy: {mean_acc}\nmean losses: {mean_loss}')
             self.save_checkpoint()
 
-    def _train_one_epoch(self):
+    def _train_one_epoch(self, current_epoch, save_examples=False):
         """helper function that trains for one epoch.
         Called by trainer.train"""
         losses_reinforce = []
@@ -116,18 +129,24 @@ class Trainer:
 
                 out_t_minus_1 = self.model.reset()
 
-                locs = []
                 mus = []
                 log_pis = []
                 baselines = []
+                if save_examples:
+                    locs = []
+                    fixations = []
+                    top_left_corners = []
 
                 with tf.GradientTape(persistent=True) as tape:
                     for t in range(self.model.glimpses):
                         out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
 
-                        locs.append(out.l_t)
                         mus.append(out.mu)
                         baselines.append(out.b_t)
+                        if save_examples:
+                            locs.append(out.l_t.numpy()[:self.num_examples_to_save, :])
+                            fixations.append(out.fixations[:self.num_examples_to_save, :])
+                            top_left_corners.append(out.top_left_corners[:self.num_examples_to_save, :])
 
                         # determine probability of choosing location l_t, given
                         # distribution parameterized by mu (output of location network)
@@ -210,6 +229,26 @@ class Trainer:
                     )
                 )
                 progress_bar.update(self.batch_size)
+
+        if save_examples:
+            locs = np.asarray(locs)
+            locs.dump(os.path.join(self.examples_dir,
+                                   f'locations_epoch_{current_epoch}'))
+            fixations = np.asarray(fixations)
+            fixations.dump(os.path.join(self.examples_dir,
+                                        f'fixations_epoch_{current_epoch}'))
+            top_left_corners = np.asarray(top_left_corners)
+            top_left_corners.dump(os.path.join(self.examples_dir,
+                                   f'top_left_corners_epoch_{current_epoch}'))
+            img = img.numpy()[:self.num_examples_to_save]
+            img.dump(os.path.join(self.examples_dir,
+                                  f'images_epoch_{current_epoch}'))
+            glimpses = out.rho.numpy()[:self.num_examples_to_save]
+            glimpses.dump(os.path.join(self.examples_dir,
+                                       f'glimpses_epoch_{current_epoch}'))
+            pred = predicted.numpy()[:self.num_examples_to_save]
+            pred.dump(os.path.join(self.examples_dir,
+                                   f'predictions_epoch_{current_epoch}'))
 
         mn_acc = np.mean(accs)
 

@@ -8,8 +8,17 @@ https://github.com/kevinzakka/recurrent-visual-attention
    Advances in neural information processing systems. 2014.
    https://arxiv.org/abs/1406.6247
 """
+from typing import NamedTuple
 
+import numpy as np
 import tensorflow as tf
+
+
+class Glimpse(NamedTuple):
+    """represents output of GlimpseSensor"""
+    rho: tf.Tensor
+    fixations: np.ndarray
+    top_left_corners: np.ndarray
 
 
 class GlimpseSensor(tf.keras.Model):
@@ -52,11 +61,20 @@ class GlimpseSensor(tf.keras.Model):
 
         Returns
         -------
-        rho : tf.Tensor
-            with shape (B, k, g_w, g_w,
-            retina-like representation of k patches of increasing size
-            and decreasing resolution, centered around location loc within
-            image img
+        Glimpse : NamedTuple
+            typed tuple, with following fields
+                rho : tf.Tensor
+                    with shape (B, k, g_w, g_w,
+                    retina-like representation of k patches of increasing size
+                    and decreasing resolution, centered around location loc within
+                    image img
+                fixations: np.ndarray
+                    locations where glimpse sensor "fixates" converted from
+                    normalized values in loc_normd to pixels in co-ordinate plane
+                    of input images.
+                top_left_corners: np.ndarray
+                    calculated top left corners of extracted glimpse 'patches'.
+                    Useful for plotting the glimpses.
         """
         batch_size, img_H, img_W, C = images.shape.as_list()
         # convert image co-ordinates from normalized to co-ordinates within
@@ -65,9 +83,10 @@ class GlimpseSensor(tf.keras.Model):
         loc_0 = tf.cast(tf.round(loc_0), tf.int32)
         loc_1 = ((loc_normd[:, 1] + 1) / 2) * img_W
         loc_1 = tf.cast(tf.round(loc_1), tf.int32)
-        loc = tf.stack([loc_0, loc_1], axis=1)
+        fixations = tf.stack([loc_0, loc_1], axis=1)
 
         rho = []
+        top_left_corners = []
         for ind in range(batch_size):
             img = images[ind, :, :, :]
             patches = []
@@ -83,9 +102,9 @@ class GlimpseSensor(tf.keras.Model):
                                                           target_width=(size * 2) + img_W)
 
                 # compute top left corner of patch
-                patch_x = loc[ind, 0] - (size // 2) + size
-                patch_y = loc[ind, 1] - (size // 2) + size
-
+                patch_x = fixations[ind, 0] - (size // 2)
+                patch_y = fixations[ind, 1] - (size // 2)
+                top_left_corners.append(np.asarray([patch_x.numpy(), patch_y.numpy()]))
                 patch = tf.slice(img_padded,
                                  begin=tf.stack([patch_x, patch_y, 0]),
                                  size=tf.stack([size, size, C])
@@ -102,7 +121,9 @@ class GlimpseSensor(tf.keras.Model):
             rho.append(patches)
 
         rho = tf.stack(rho)
-        return rho
+        fixations = fixations.numpy()
+        top_left_corners = np.asarray(top_left_corners)
+        return Glimpse(rho, fixations, top_left_corners)
 
 
 class GlimpseNetwork(tf.keras.Model):
@@ -151,7 +172,7 @@ class GlimpseNetwork(tf.keras.Model):
         self.theta_g_2 = tf.keras.layers.Dense(units=h_gt_units, activation='relu')
 
     def forward(self, images, loc):
-        """
+        """computes forward pass through GlimpseNetwork
 
         Parameters
         ----------
@@ -164,20 +185,29 @@ class GlimpseNetwork(tf.keras.Model):
 
         Returns
         -------
-        rho : tf.Tensor
-            with shape
-            (batch size, number of glimpses, glimpse size, glimpse size, channels);
-            Glimpse representation extracted by GlimpseSensor.
+        Glimpse : NamedTuple
+            typed tuple, with following fields
+                rho : tf.Tensor
+                    with shape
+                    (batch size, number of glimpses, glimpse size, glimpse size, channels);
+                    Glimpse representation extracted by GlimpseSensor.
+            fixations: np.ndarray
+                locations where glimpse sensor "fixates" converted from
+                normalized values in loc_normd to pixels in co-ordinate plane
+                of input images.
+            top_left_corners: np.ndarray
+                calculated top left corners of extracted glimpse 'patches'.
+                Useful for plotting the glimpses.
         g_t : tf.Tensor
             glimpse representation, output by glimpse network
         """
-        rho = self.glimpse_sensor.glimpse(images, loc)
-        batch_size, k, g, _, channels = rho.shape.as_list()
-        rho_vec = tf.reshape(rho, shape=(batch_size, k * g * g * channels))
+        glimpse = self.glimpse_sensor.glimpse(images, loc)
+        batch_size, k, g, _, channels = glimpse.rho.shape.as_list()
+        rho_vec = tf.reshape(glimpse.rho, shape=(batch_size, k * g * g * channels))
         h_g = self.theta_g_0(rho_vec)
         h_l = self.theta_g_1(loc)
         g_t = self.theta_g_2(h_g + h_l)
-        return rho, g_t
+        return glimpse, g_t
 
 
 class CoreNetwork(tf.keras.Model):
