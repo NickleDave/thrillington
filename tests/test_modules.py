@@ -7,7 +7,7 @@ tfe = tf.contrib.eager
 
 class TestGlimpseSensor(tf.test.TestCase):
     def test_init(self):
-        glimpse_sensor = ram.modules.GlimpseSensor()
+        glimpse_sensor = src.ram.modules.GlimpseSensor()
         assert hasattr(glimpse_sensor, 'g_w')
         assert hasattr(glimpse_sensor, 'k')
         assert hasattr(glimpse_sensor, 's')
@@ -21,7 +21,7 @@ class TestGlimpseSensor(tf.test.TestCase):
         channels = 1
         fake_images = tf.random_uniform(shape=(batch_size, img_height, img_width, channels))
         loc_normd = tf.random_uniform(shape=(batch_size, 2), minval=-1, maxval=1)
-        glimpse_sensor = ram.modules.GlimpseSensor()
+        glimpse_sensor = src.ram.modules.GlimpseSensor()
         rho = glimpse_sensor.glimpse(fake_images, loc_normd)
         assert rho.shape == (batch_size,
                              glimpse_sensor.k,
@@ -32,7 +32,7 @@ class TestGlimpseSensor(tf.test.TestCase):
 
 class TestGlimpseNetwork(tf.test.TestCase):
     def test_init(self):
-        glimpse_network = ram.modules.GlimpseNetwork()
+        glimpse_network = src.ram.modules.GlimpseNetwork()
         assert hasattr(glimpse_network, 'g_w')
         assert hasattr(glimpse_network, 'k')
         assert hasattr(glimpse_network, 's')
@@ -49,7 +49,7 @@ class TestGlimpseNetwork(tf.test.TestCase):
         channels = 1
         fake_images = tf.random_uniform(shape=(batch_size, img_height, img_width, channels))
         loc_normd = tf.random_uniform(shape=(batch_size, 2), minval=-1, maxval=1)
-        glimpse_network = ram.modules.GlimpseNetwork()
+        glimpse_network = src.ram.modules.GlimpseNetwork()
         rho, g_t = glimpse_network.forward(fake_images, loc_normd)
         assert rho.shape == (batch_size,
                              glimpse_network.k,
@@ -63,7 +63,7 @@ class TestGlimpseNetwork(tf.test.TestCase):
 class TestCoreNetwork(tf.test.TestCase):
     def test_init(self):
         hidden_size = 256
-        core_network = ram.modules.CoreNetwork(hidden_size=hidden_size)
+        core_network = src.ram.modules.CoreNetwork(hidden_size=hidden_size)
         assert hasattr(core_network, 'hidden_size')
         assert hasattr(core_network, 'linear_h_t_minus_1')
         assert hasattr(core_network, 'linear_g_t')
@@ -72,7 +72,7 @@ class TestCoreNetwork(tf.test.TestCase):
     def test_forward(self):
         batch_size = 10
         hidden_size = 256
-        core_network = ram.modules.CoreNetwork(hidden_size=hidden_size)
+        core_network = src.ram.modules.CoreNetwork(hidden_size=hidden_size)
         h_t_minus_1 = tf.random_uniform(shape=(batch_size, hidden_size))
         g_t = tf.random_uniform(shape=(batch_size, hidden_size))
         h_t = core_network.forward(g_t, h_t_minus_1)
@@ -82,7 +82,7 @@ class TestCoreNetwork(tf.test.TestCase):
 class TestLocationNetwork(tf.test.TestCase):
     def test_init(self):
         loc_std = 0.01
-        loc_net = ram.modules.LocationNetwork(loc_std=loc_std)
+        loc_net = src.ram.modules.LocationNetwork(loc_std=loc_std)
         assert hasattr(loc_net, 'output_size')
         assert hasattr(loc_net, 'loc_std')
         assert hasattr(loc_net, 'fc')
@@ -94,7 +94,7 @@ class TestLocationNetwork(tf.test.TestCase):
         hidden_size = 256
         loc_std = 0.01
         output_size = 2
-        loc_net = ram.modules.LocationNetwork(loc_std=loc_std, output_size=output_size)
+        loc_net = src.ram.modules.LocationNetwork(loc_std=loc_std, output_size=output_size)
         h_t = tf.zeros(shape=(batch_size, hidden_size))
         mu, l_t = loc_net.forward(h_t)
         assert mu.shape == (batch_size, output_size)
@@ -104,14 +104,14 @@ class TestLocationNetwork(tf.test.TestCase):
 class TestActionNetwork(tf.test.TestCase):
     def test_init(self):
         num_actions = 10
-        action_network = ram.modules.ActionNetwork(num_actions=num_actions)
+        action_network = src.ram.modules.ActionNetwork(num_actions=num_actions)
         assert hasattr(action_network, 'num_actions')
         assert hasattr(action_network, 'fc')
 
     @tfe.run_test_in_graph_and_eager_modes
     def test_forward(self):
         num_actions = 10
-        action_network = ram.modules.ActionNetwork(num_actions=num_actions)
+        action_network = src.ram.modules.ActionNetwork(num_actions=num_actions)
         batch_size = 10
         hidden_size = 256
         h_t = tf.random_uniform(shape=(batch_size, hidden_size))
@@ -126,14 +126,14 @@ class TestActionNetwork(tf.test.TestCase):
 class TestBaselineNetwork(tf.test.TestCase):
     def test_init(self):
         output_size = 1
-        baseline_network = ram.modules.BaselineNetwork(output_size=output_size)
+        baseline_network = src.ram.modules.BaselineNetwork(output_size=output_size)
         assert hasattr(baseline_network, 'output_size')
         assert hasattr(baseline_network, 'fc')
 
     @tfe.run_test_in_graph_and_eager_modes
     def test_forward(self):
         output_size = 1
-        baseline_network = ram.modules.BaselineNetwork(output_size=output_size)
+        baseline_network = src.ram.modules.BaselineNetwork(output_size=output_size)
         batch_size = 10
         hidden_size = 256
         h_t = tf.random_uniform(shape=(batch_size, hidden_size))
