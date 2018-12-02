@@ -10,7 +10,6 @@ https://github.com/seann999/tensorflow_mnist_ram
 """
 from collections import namedtuple
 
-import numpy as np
 import tensorflow as tf
 from tensorflow.python.training.checkpointable import tracking
 
