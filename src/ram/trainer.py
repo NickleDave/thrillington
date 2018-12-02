@@ -16,7 +16,7 @@ import tensorflow as tf
 import numpy as np
 from tqdm import tqdm
 
-import ram
+from . import ram
 
 LossTuple = namedtuple('LossTuple', ['loss_reinforce',
                                      'loss_baseline',
