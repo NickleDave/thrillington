@@ -1,4 +1,5 @@
 from .ram import RAM
-from .mnist import dataset
+from .dataset import mnist
 from .utils import parse_config
 from .trainer import Trainer
+from . import modules
