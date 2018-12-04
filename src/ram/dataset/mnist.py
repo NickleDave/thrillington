@@ -25,6 +25,8 @@ from typing import NamedTuple
 import numpy as np
 import tensorflow as tf
 
+from .data import Data
+
 
 def read32(bytestream):
     """Read 4 bytes from bytestream as an unsigned 32-bit integer."""
