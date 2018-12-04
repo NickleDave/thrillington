@@ -24,7 +24,7 @@ VERSION = '0.0.1a1'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
-    # 'requests', 'maya', 'records',
+    'numpy', 'tensorflow', 'tqdm'
 ]
 
 # What packages are optional?
