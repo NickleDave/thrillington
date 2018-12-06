@@ -28,7 +28,8 @@ class Trainer:
     """Trainer object for training the RAM model"""
     def __init__(self,
                  config,
-                 data
+                 train_data,
+                 val_data=None
                  ):
         """__init__ for Trainer
 
@@ -36,15 +37,18 @@ class Trainer:
         ----------
         config : namedtuple
             as returned by ram.utils.parse_config.
-        data : ram.mnist.dataset.Data
-            subclass of NamedTuple that includes
-            a tensorflow dataset object and the
-            number of samples as fields.
+        train_data : ram.dataset.Dataset
+            Training data.
+            Named tuple with fields:
+                dataset : tensorflow Dataset object with images and labels / correct action
+                num_samples : number of samples, int
             E.g., the MNIST training set,
             returned by calling ram.dataset.train.
+        val_data : ram.dataset.Dataset
+            Validation data. Default is None (in which case a validation score is not computed).
         """
-        if data.num_samples % config.train.batch_size != 0:
-            raise ValueError(f'Number of training samples, {data.num_samples}, '
+        if train_data.num_samples % config.train.batch_size != 0:
+            raise ValueError(f'Number of training samples, {train_data.num_samples}, '
                              f'is not evenly divisible by batch size, {config.train.batch_size}.\n'
                              f'This will cause an error when training network;'
                              f'please change either so that data.num_samples % config.train.batch_size == 0:')
@@ -53,8 +57,13 @@ class Trainer:
                              **config.model._asdict())
 
         # then unpack train config
-        self.dataset = data.dataset
-        self.num_samples = data.num_samples
+        self.train_data = train_data.dataset
+        self.num_train_samples = train_data.num_samples
+
+        if val_data:
+            self.val_data = val_data.dataset
+            self.num_val_samples = val_data.num_samples
+
         self.batch_size = config.train.batch_size
         self.learning_rate = config.train.learning_rate
         self.epochs = config.train.epochs
@@ -109,8 +118,17 @@ class Trainer:
             else:
                 save_examples = False
 
-            mean_acc, mean_loss = self._train_one_epoch(current_epoch=epoch, save_examples=save_examples)
-            print(f'mean accuracy: {mean_acc}\nmean losses: {mean_loss}')
+            mean_acc_dict, mean_loss = self._train_one_epoch(current_epoch=epoch, save_examples=save_examples)
+            # violating DRY by unpacking dict into vars,
+            # because apparently format strings with dict keys blow up the PyCharm parser
+            mn_acc = mean_acc_dict['mn_acc']
+            if 'mn_val_acc' in mean_acc_dict:
+                mn_val_acc = mean_acc_dict['mn_val_acc']
+                print(f'mean accuracy: {mn_acc}\n'
+                      f'mean validation accuracy: {mn_val_acc}\n'
+                      f'mean losses: {mean_loss}')
+            else:
+                print(f'mean accuracy: {mn_acc}\nmean losses: {mean_loss}')
             self.save_checkpoint()
 
     def _train_one_epoch(self, current_epoch, save_examples=False):
@@ -124,8 +142,8 @@ class Trainer:
 
         tic = time.time()
 
-        with tqdm(total=self.num_samples) as progress_bar:
-            for img, lbl in self.dataset.batch(self.batch_size):
+        with tqdm(total=self.num_train_samples) as progress_bar:
+            for img, lbl in self.train_data.batch(self.batch_size):
 
                 out_t_minus_1 = self.model.reset()
 
@@ -246,14 +264,34 @@ class Trainer:
             pred.dump(os.path.join(self.examples_dir,
                                    f'predictions_epoch_{current_epoch}'))
 
-        mn_acc = np.mean(accs)
+            if self.val_data:
+                print('calculating validation accuracy')
+                val_accs = []
+                with tqdm(total=self.num_val_samples) as progress_bar:
+                    for img, lbl in self.val_data.batch(self.batch_size):
+                        out_t_minus_1 = self.model.reset()
+                        for t in range(self.model.glimpses):
+                            out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
+                            out_t_minus_1 = out
+
+                        # Remember that action network output a_t becomes predictions at last time step
+                        predicted = tf.argmax(out.a_t, axis=1, output_type=tf.int32)
+                        val_acc = tf.equal(predicted, lbl)
+                        val_acc = np.sum(val_acc.numpy()) / val_acc.numpy().shape[-1] * 100
+                    progress_bar.update(self.batch_size)
+                    val_accs.append(val_acc)
+                mn_val_acc = np.mean(val_accs)
+
+        mn_acc_dict = {'mn_acc': np.mean(accs)}
+        if self.val_data:
+            mn_acc_dict['mn_val_acc'] = mn_val_acc
 
         mn_loss_reinforce = np.asarray(losses_reinforce).mean()
         mn_loss_baseline = np.asarray(losses_baseline).mean()
         mn_loss_action = np.asarray(losses_action).mean()
         mn_losses_hybrid = np.asarray(losses_hybrid).mean()
 
-        return mn_acc, LossTuple(mn_loss_reinforce,
-                                 mn_loss_baseline,
-                                 mn_loss_action,
-                                 mn_losses_hybrid)
+        return mn_acc_dict, LossTuple(mn_loss_reinforce,
+                                      mn_loss_baseline,
+                                      mn_loss_action,
+                                      mn_losses_hybrid)
