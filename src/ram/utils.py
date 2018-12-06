@@ -34,7 +34,10 @@ def parse_config(config_file=None):
     config.read(os.path.join(this_file_dir, 'default.ini'))
     # then replace values with any specified by user
     if config_file is not None:
-        config.read(config_file)
+        if os.path.isfile(config_file):
+            config.read(config_file)
+        else:
+            raise FileNotFoundError(f'did not find config file: {config_file}')
 
     sections = [key for key in list(config.keys()) if key != 'DEFAULT']
     ConfigTuple = namedtuple('ConfigTuple', sections)
