@@ -18,10 +18,17 @@ from tqdm import tqdm
 
 from . import ram
 
-LossTuple = namedtuple('LossTuple', ['loss_reinforce',
-                                     'loss_baseline',
-                                     'loss_action',
-                                     'loss_hybrid'])
+LossesTuple = namedtuple('LossesTuple', ['reinforce_loss',
+                                         'baseline_loss',
+                                         'action_loss',
+                                         'hybrid_loss',
+                                         ])
+
+MeanLossTuple = namedtuple('MeanLossTuple', ['mn_reinforce_loss',
+                                             'mn_baseline_loss',
+                                             'mn_action_loss',
+                                             'mn_hybrid_loss',
+                                             ])
 
 
 class Trainer:
@@ -63,6 +70,9 @@ class Trainer:
         if val_data:
             self.val_data = val_data.dataset
             self.num_val_samples = val_data.num_samples
+        else:
+            self.val_data = None
+            self.num_val_samples = None
 
         self.batch_size = config.train.batch_size
         self.learning_rate = config.train.learning_rate
@@ -87,6 +97,12 @@ class Trainer:
             if not os.path.isdir(self.examples_dir):
                 os.makedirs(self.examples_dir)
             self.num_examples_to_save = config.train.num_examples_to_save
+
+        self.save_loss = config.train.save_loss
+        if self.save_loss:
+            self.loss_dir = os.path.abspath(config.train.loss_dir)
+            if not os.path.isdir(self.loss_dir):
+                os.makedirs(self.loss_dir)
 
     def load_checkpoint(self):
         """loads model and optimizer from a checkpoint.
@@ -118,18 +134,23 @@ class Trainer:
             else:
                 save_examples = False
 
-            mean_acc_dict, mean_loss = self._train_one_epoch(current_epoch=epoch, save_examples=save_examples)
+            mn_acc_dict, losses, mn_loss = self._train_one_epoch(current_epoch=epoch, save_examples=save_examples)
             # violating DRY by unpacking dict into vars,
             # because apparently format strings with dict keys blow up the PyCharm parser
-            mn_acc = mean_acc_dict['mn_acc']
-            if 'mn_val_acc' in mean_acc_dict:
-                mn_val_acc = mean_acc_dict['mn_val_acc']
+            mn_acc = mn_acc_dict['mn_acc']
+            if 'mn_val_acc' in mn_acc_dict:
+                mn_val_acc = mn_acc_dict['mn_val_acc']
                 print(f'mean accuracy: {mn_acc}\n'
                       f'mean validation accuracy: {mn_val_acc}\n'
-                      f'mean losses: {mean_loss}')
+                      f'mean losses: {mn_loss}')
             else:
-                print(f'mean accuracy: {mn_acc}\nmean losses: {mean_loss}')
+                print(f'mean accuracy: {mn_acc}\nmean losses: {mn_loss}')
             self.save_checkpoint()
+            if self.save_loss:
+                for loss_name, loss_arr in losses._asdict().items():
+                    loss_filename = os.path.join(self.loss_dir,
+                                                 f'{loss_name}_epoch_{epoch}')
+                    np.save(loss_filename, loss_arr)
 
     def _train_one_epoch(self, current_epoch, save_examples=False):
         """helper function that trains for one epoch.
@@ -143,7 +164,9 @@ class Trainer:
         tic = time.time()
 
         with tqdm(total=self.num_train_samples) as progress_bar:
+            batch = 0
             for img, lbl in self.train_data.batch(self.batch_size):
+                batch += 1
 
                 out_t_minus_1 = self.model.reset()
 
@@ -163,7 +186,6 @@ class Trainer:
                         if save_examples:
                             locs.append(out.l_t.numpy()[:self.num_examples_to_save, :])
                             fixations.append(out.fixations[:self.num_examples_to_save, :])
-
                         # determine probability of choosing location l_t, given
                         # distribution parameterized by mu (output of location network)
                         # and the constant standard deviation specified as a parameter.
@@ -264,23 +286,23 @@ class Trainer:
             pred.dump(os.path.join(self.examples_dir,
                                    f'predictions_epoch_{current_epoch}'))
 
-            if self.val_data:
-                print('calculating validation accuracy')
-                val_accs = []
-                with tqdm(total=self.num_val_samples) as progress_bar:
-                    for img, lbl in self.val_data.batch(self.batch_size):
-                        out_t_minus_1 = self.model.reset()
-                        for t in range(self.model.glimpses):
-                            out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
-                            out_t_minus_1 = out
+        if self.val_data:
+            print('calculating validation accuracy')
+            val_accs = []
+            with tqdm(total=self.num_val_samples) as progress_bar:
+                for img, lbl in self.val_data.batch(self.batch_size):
+                    out_t_minus_1 = self.model.reset()
+                    for t in range(self.model.glimpses):
+                        out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
+                        out_t_minus_1 = out
 
-                        # Remember that action network output a_t becomes predictions at last time step
-                        predicted = tf.argmax(out.a_t, axis=1, output_type=tf.int32)
-                        val_acc = tf.equal(predicted, lbl)
-                        val_acc = np.sum(val_acc.numpy()) / val_acc.numpy().shape[-1] * 100
-                    progress_bar.update(self.batch_size)
-                    val_accs.append(val_acc)
-                mn_val_acc = np.mean(val_accs)
+                    # Remember that action network output a_t becomes predictions at last time step
+                    predicted = tf.argmax(out.a_t, axis=1, output_type=tf.int32)
+                    val_acc = tf.equal(predicted, lbl)
+                    val_acc = np.sum(val_acc.numpy()) / val_acc.numpy().shape[-1] * 100
+                progress_bar.update(self.batch_size)
+                val_accs.append(val_acc)
+            mn_val_acc = np.mean(val_accs)
 
         mn_acc_dict = {'mn_acc': np.mean(accs)}
         if self.val_data:
@@ -291,7 +313,9 @@ class Trainer:
         mn_loss_action = np.asarray(losses_action).mean()
         mn_losses_hybrid = np.asarray(losses_hybrid).mean()
 
-        return mn_acc_dict, LossTuple(mn_loss_reinforce,
-                                      mn_loss_baseline,
-                                      mn_loss_action,
-                                      mn_losses_hybrid)
+        losses = LossesTuple(np.asarray(losses_reinforce),
+                             np.asarray(losses_baseline),
+                             np.asarray(losses_action),
+                             np.asarray(losses_hybrid))
+        mn_loss = MeanLossTuple(mn_loss_reinforce, mn_loss_baseline, mn_loss_action, mn_losses_hybrid)
+        return mn_acc_dict, losses, mn_loss
