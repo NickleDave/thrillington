@@ -104,6 +104,11 @@ class Trainer:
             if not os.path.isdir(self.loss_dir):
                 os.makedirs(self.loss_dir)
 
+        self.shuffle_each_epoch = config.train.shuffle_each_epoch
+        if self.shuffle_each_epoch:
+            self.train_data = self.train_data.shuffle(buffer_size=self.num_train_samples,
+                                                      reshuffle_each_iteration=True)
+
     def load_checkpoint(self):
         """loads model and optimizer from a checkpoint.
         Called when config.train.restore is True"""
