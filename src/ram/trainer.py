@@ -170,7 +170,7 @@ class Trainer:
 
         with tqdm(total=self.num_train_samples) as progress_bar:
             batch = 0
-            for img, lbl in self.train_data.batch(self.batch_size):
+            for img, lbl, sample_inds in self.train_data.batch(self.batch_size):
                 batch += 1
 
                 out_t_minus_1 = self.model.reset()
