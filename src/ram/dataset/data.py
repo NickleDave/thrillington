@@ -11,4 +11,5 @@ class Data(NamedTuple):
     sample_inds: np.ndarray
 
     def __repr__(self) -> str:
-        return f'<Data {self.dataset}, samples={self.num_samples}>'
+        return (f'ram.dataset.Data object with fields:\n\tdataset={self.dataset}\n\tnum_samples={self.num_samples}'
+                f'\n\tsample_inds={self.sample_inds}')
