@@ -306,6 +306,7 @@ class Trainer:
             train_inds = np.asarray(train_inds)
             train_inds = np.squeeze(train_inds)
             train_inds_fname = f'train_inds_epoch_{current_epoch}'
+            train_inds_fname = os.path.join(self.train_inds_dir, train_inds_fname)
             np.save(train_inds_fname, train_inds)
 
         if self.val_data:
