@@ -105,16 +105,6 @@ def normalize(images):
     return images
 
 
-class Data(NamedTuple):
-    """represents a Tensorflow Dataset object and the number of samples in it"""
-    dataset: tf.data.Dataset
-    num_samples: int
-    sample_inds: np.ndarray
-
-    def __repr__(self) -> str:
-        return f'<Data {self.dataset}, samples={self.num_samples}>'
-
-
 def _dataset(directory, images_file, labels_file, num_samples=None):
     """Helper function that downloads (if necessary) and parses MNIST dataset.
     Instead of calling this directly, call the train or test functions.
@@ -165,10 +155,10 @@ def _dataset(directory, images_file, labels_file, num_samples=None):
     images = normalize(images)
 
     def gen():
-        for image, label in zip(images, labels):
-            yield image, label
+        for image, label, batch_sample_inds in zip(images, labels, sample_inds):
+            yield image, label, batch_sample_inds
 
-    ds = tf.data.Dataset.from_generator(gen, (tf.float32, tf.int32), ((28, 28, 1), []))
+    ds = tf.data.Dataset.from_generator(gen, (tf.float32, tf.int32, tf.int32), ((28, 28, 1), [], []))
     data = Data(dataset=ds, num_samples=len(labels), sample_inds=sample_inds)
     return data
 

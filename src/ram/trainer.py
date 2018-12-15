@@ -109,6 +109,12 @@ class Trainer:
             self.train_data = self.train_data.shuffle(buffer_size=self.num_train_samples,
                                                       reshuffle_each_iteration=True)
 
+        self.save_train_inds = config.train.save_train_inds
+        if self.save_train_inds:
+            self.train_inds_dir = os.path.abspath(config.train.train_inds_dir)
+            if not os.path.isdir(self.train_inds_dir):
+                os.makedirs(self.train_inds_dir)
+
     def load_checkpoint(self):
         """loads model and optimizer from a checkpoint.
         Called when config.train.restore is True"""
@@ -168,9 +174,14 @@ class Trainer:
 
         tic = time.time()
 
+        if self.save_train_inds:
+            train_inds = []
+
         with tqdm(total=self.num_train_samples) as progress_bar:
             batch = 0
-            for img, lbl in self.train_data.batch(self.batch_size):
+            for img, lbl, batch_train_inds in self.train_data.batch(self.batch_size):
+                if self.save_train_inds:
+                    train_inds.extend(batch_train_inds)
                 batch += 1
 
                 out_t_minus_1 = self.model.reset()
@@ -290,6 +301,13 @@ class Trainer:
             pred = predicted.numpy()[:self.num_examples_to_save]
             pred.dump(os.path.join(self.examples_dir,
                                    f'predictions_epoch_{current_epoch}'))
+
+        if self.save_train_inds:
+            train_inds = np.asarray(train_inds)
+            train_inds = np.squeeze(train_inds)
+            train_inds_fname = f'train_inds_epoch_{current_epoch}'
+            train_inds_fname = os.path.join(self.train_inds_dir, train_inds_fname)
+            np.save(train_inds_fname, train_inds)
 
         if self.val_data:
             print('calculating validation accuracy')
