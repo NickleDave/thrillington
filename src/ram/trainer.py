@@ -313,7 +313,7 @@ class Trainer:
             print('calculating validation accuracy')
             val_accs = []
             with tqdm(total=self.num_val_samples) as progress_bar:
-                for img, lbl in self.val_data.batch(self.batch_size):
+                for img, lbl, batch_train_inds in self.val_data.batch(self.batch_size):
                     out_t_minus_1 = self.model.reset()
                     for t in range(self.model.glimpses):
                         out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
