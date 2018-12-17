@@ -202,7 +202,10 @@ def prep(download_dir, val_size=None, random_seed=None,
             'sample_inds': np.asarray(new_train_inds),
         }
 
-    paths_dict = {}
+    splits = ['train', 'test']
+    if val_size:
+        splits.append('val')
+    paths_dict = {split: {} for split in splits}
     for split, data_dict in datasets.items():
         img_path = os.path.join(output_dir, f'MNIST_{split}_images')
         np.save(img_path, data_dict['images'])
