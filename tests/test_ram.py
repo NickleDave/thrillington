@@ -27,7 +27,7 @@ class TestRAM(tf.test.TestCase):
         assert hasattr(ram_model, 'Out')
         assert hasattr(ram_model, 'initial_l_t_distrib')
 
-    @tfe.run_test_in_graph_and_eager_modes()
+    @tfe.run_test_in_graph_and_eager_modes
     def test_reset(self):
         ram_model = ram.RAM()
         out_t_minus_1 = ram_model.reset()
@@ -35,7 +35,7 @@ class TestRAM(tf.test.TestCase):
         assert out_t_minus_1.l_t.shape == (ram_model.batch_size, 2)
         assert not any([out_t_minus_1.mu, out_t_minus_1.a_t, out_t_minus_1.b_t])
 
-    @tfe.run_test_in_graph_and_eager_modes()
+    @tfe.run_test_in_graph_and_eager_modes
     def test_step(self):
         batch_size = 10
         img_height = 28
