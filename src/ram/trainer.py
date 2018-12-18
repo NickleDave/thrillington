@@ -11,6 +11,7 @@ https://github.com/seann999/tensorflow_mnist_ram
 import os
 import time
 from collections import namedtuple
+from datetime import datetime
 
 import tensorflow as tf
 import numpy as np
@@ -83,24 +84,32 @@ class Trainer:
         elif config.train.optimizer == 'sgd':
             self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate)
         self.restore = config.train.restore
-        self.checkpoint_dir = os.path.abspath(config.train.checkpoint_dir)
+
+        timenow = datetime.now().strftime('%y%m%d_%H%M%S')
+        results_dirname = 'RAM_results_' + timenow
+        self.results_dir = os.path.join(config.train.root_results_dir, results_dirname)
+
+        if not os.path.isdir(self.results_dir):
+            os.makedirs(self.results_dir)
+
+        self.checkpoint_dir = os.path.join(self.results_dir, 'checkpoint')
         if not os.path.isdir(self.checkpoint_dir):
             os.makedirs(self.checkpoint_dir)
-        self.checkpoint_path = os.path.join(config.train.checkpoint_dir,
+        self.checkpoint_path = os.path.join(self.checkpoint_dir,
                                             config.train.checkpoint_prefix)
         self.checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
                                                 model=self.model,
                                                 optimizer_step=tf.train.get_or_create_global_step())
         if hasattr(config.train, 'save_examples_every'):
             self.save_examples_every = config.train.save_examples_every
-            self.examples_dir = os.path.abspath(config.train.examples_dir)
+            self.examples_dir = os.path.join(self.results_dir, 'examples')
             if not os.path.isdir(self.examples_dir):
                 os.makedirs(self.examples_dir)
             self.num_examples_to_save = config.train.num_examples_to_save
 
         self.save_loss = config.train.save_loss
         if self.save_loss:
-            self.loss_dir = os.path.abspath(config.train.loss_dir)
+            self.loss_dir = os.path.join(self.results_dir, 'loss')
             if not os.path.isdir(self.loss_dir):
                 os.makedirs(self.loss_dir)
 
@@ -111,7 +120,7 @@ class Trainer:
 
         self.save_train_inds = config.train.save_train_inds
         if self.save_train_inds:
-            self.train_inds_dir = os.path.abspath(config.train.train_inds_dir)
+            self.train_inds_dir = os.path.join(self.results_dir, 'train_inds')
             if not os.path.isdir(self.train_inds_dir):
                 os.makedirs(self.train_inds_dir)
 
