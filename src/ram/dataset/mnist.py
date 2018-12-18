@@ -95,7 +95,85 @@ def fetch_labels(labels_file):
     return labels.astype(np.int32)
 
 
-def prep(download_dir, val_size=None, random_seed=None,
+def _split_stratified(img, lbl, sample_inds, rng, split_size=0.1, return_both=False):
+    """helper function that splits MNIST in stratified way to maintain class balance across splits"""
+    if split_size is not None:
+        if split_size <= 0 or split_size >= 1.0:
+            raise ValueError('split_size must be >0.0 and <1.0')
+
+    target_split_size = np.floor(split_size * len(lbl)).astype(int)
+
+    split1_img = []
+    split1_lbl = []
+    split1_inds = []
+    split2_img = []
+    split2_lbl = []
+    split2_inds = []
+
+    for digit_class in range(10):
+        this_class_inds = np.where(lbl == digit_class)[0]
+        rng.shuffle(this_class_inds)
+        split1_ind = np.floor(split_size * len(this_class_inds)).astype(int)
+
+        this_class_split1_inds = this_class_inds[:split1_ind]
+        split1_img.extend(img[this_class_split1_inds])
+        split1_lbl.extend(lbl[this_class_split1_inds])
+        split1_inds.extend(sample_inds[this_class_split1_inds])
+
+        this_class_split2_inds = this_class_inds[split1_ind:]
+        split2_img.extend(img[this_class_split2_inds])
+        split2_lbl.extend(lbl[this_class_split2_inds])
+        split2_inds.extend(sample_inds[this_class_split2_inds])
+
+    # shuffle both datasets, because they are currently in order by class
+    split1_shuffle_inds = np.arange(len(split1_lbl))
+    rng.shuffle(split1_shuffle_inds)
+    split1_img = np.asarray(split1_img)[split1_shuffle_inds]
+    split1_lbl = np.asarray(split1_lbl)[split1_shuffle_inds]
+    split1_inds = np.asarray(split1_inds)[split1_shuffle_inds]
+
+    split2_shuffle_inds = np.arange(len(split2_lbl))
+    rng.shuffle(split2_shuffle_inds)
+    split2_img = np.asarray(split2_img)[split2_shuffle_inds]
+    split2_lbl = np.asarray(split2_lbl)[split2_shuffle_inds]
+    split2_inds = np.asarray(split2_inds)[split2_shuffle_inds]
+
+    if len(split1_lbl) < target_split_size:
+        num_samples_needed = target_split_size - len(split1_lbl)
+        split1_img = np.concatenate((split1_img, split2_img[:num_samples_needed]))
+        split2_img = split2_img[num_samples_needed:]
+        split1_lbl = np.concatenate((split1_lbl, split2_lbl[:num_samples_needed]))
+        split2_lbl = split2_lbl[num_samples_needed:]
+        split1_inds = np.concatenate((split1_inds, split2_inds[:num_samples_needed]))
+        split2_inds = split2_inds[num_samples_needed:]
+    elif len(split1_lbl) > target_split_size:
+        num_samples_to_drop = len(split1_lbl) - target_split_size
+        split1_img = split1_img[num_samples_to_drop:]
+        split2_img = np.concatenate((split1_img[:num_samples_to_drop], split2_img))
+        split1_lbl = split1_lbl[num_samples_to_drop:]
+        split2_lbl = np.concatenate((split1_lbl[:num_samples_to_drop], split2_lbl))
+        split1_inds = split1_inds[num_samples_to_drop:]
+        split2_inds = np.concatenate((split1_inds[:num_samples_to_drop], split2_inds))
+
+    split1 = {
+        'images': split1_img,
+        'labels': split1_lbl,
+        'sample_inds': split1_inds,
+    }
+
+    split2 = {
+        'images': split2_img,
+        'labels': split2_lbl,
+        'sample_inds': split2_inds,
+    }
+
+    if return_both:
+        return split1, split2
+    else:
+        return split1
+
+
+def prep(download_dir, train_size=None, val_size=None, random_seed=None,
          train_images_file='train-images-idx3-ubyte', train_labels_file='train-labels-idx1-ubyte',
          test_images_file='t10k-images-idx3-ubyte', test_labels_file='t10k-labels-idx1-ubyte',
          output_dir=None):
@@ -136,6 +214,10 @@ def prep(download_dir, val_size=None, random_seed=None,
     """
     datasets = {}
 
+    if train_size is not None:
+        if train_size <= 0 or val_size >= 1.0:
+            raise ValueError('train_size must be >0.0 and <1.0')
+
     if val_size is not None:
         if val_size <= 0 or val_size >= 1.0:
             raise ValueError('val_size must be >0.0 and <1.0')
@@ -164,76 +246,24 @@ def prep(download_dir, val_size=None, random_seed=None,
         'sample_inds': np.arange(len(fetch_labels(test_labels_file))),
     }
 
+    rng = np.random.RandomState()
+    rng.seed(random_seed)
+
+    if train_size:
+        datasets['train'] = _split_stratified(img=datasets['train']['images'],
+                                              lbl=datasets['train']['labels'],
+                                              sample_inds=datasets['train']['sample_inds'],
+                                              rng=rng,
+                                              split_size=train_size,
+                                              return_both=False)
+
     if val_size:
-        # turns out MNIST has slight class imbalance, so we need to adjust val set after we make it
-        target_val_size = np.floor(val_size * len(datasets['train']['labels'])).astype(int)
-
-        rng = np.random.RandomState()
-        rng.seed(random_seed)
-
-        new_train_img = []
-        new_train_lbl = []
-        new_train_inds = []
-        val_img = []
-        val_lbl = []
-        val_inds = []
-
-        for digit_class in range(10):
-            this_class_inds = np.where(datasets['train']['labels'] == digit_class)[0]
-            rng.shuffle(this_class_inds)
-            val_ind = np.floor(val_size * len(this_class_inds)).astype(int)
-
-            this_class_val_inds = this_class_inds[:val_ind]
-            val_img.extend(datasets['train']['images'][this_class_val_inds])
-            val_lbl.extend(datasets['train']['labels'][this_class_val_inds])
-            val_inds.extend(datasets['train']['sample_inds'][this_class_val_inds])
-
-            this_class_train_inds = this_class_inds[val_ind:]
-            new_train_img.extend(datasets['train']['images'][this_class_train_inds])
-            new_train_lbl.extend(datasets['train']['labels'][this_class_train_inds])
-            new_train_inds.extend(datasets['train']['sample_inds'][this_class_train_inds])
-
-        # shuffle both datasets, because they are currently in order by class
-        val_shuffle_inds = np.arange(len(val_lbl))
-        rng.shuffle(val_shuffle_inds)
-        val_img = np.asarray(val_img)[val_shuffle_inds]
-        val_lbl = np.asarray(val_lbl)[val_shuffle_inds]
-        val_inds = np.asarray(val_inds)[val_shuffle_inds]
-
-        train_shuffle_inds = np.arange(len(new_train_lbl))
-        rng.shuffle(np.arange(len(val_lbl)))
-        new_train_img = np.asarray(new_train_img)[train_shuffle_inds]
-        new_train_lbl = np.asarray(new_train_lbl)[train_shuffle_inds]
-        new_train_inds = np.asarray(new_train_inds)[train_shuffle_inds]
-
-        if len(val_lbl) < target_val_size:
-            num_samples_needed = target_val_size - len(val_lbl)
-            val_img = np.concatenate((val_img, new_train_img[:num_samples_needed]))
-            new_train_img = new_train_img[num_samples_needed:]
-            val_lbl = np.concatenate((val_lbl, new_train_lbl[:num_samples_needed]))
-            new_train_lbl = new_train_lbl[num_samples_needed:]
-            val_inds = np.concatenate((val_inds, new_train_inds[:num_samples_needed]))
-            new_train_inds = new_train_inds[num_samples_needed:]
-        elif len(val_lbl) > target_val_size:
-            num_samples_to_drop = len(val_lbl) - target_val_size
-            val_img = val_img[num_samples_to_drop:]
-            new_train_img = np.concatenate((val_img[:num_samples_to_drop], new_train_img))
-            val_lbl = val_lbl[num_samples_to_drop:]
-            new_train_lbl = np.concatenate((val_lbl[:num_samples_to_drop], new_train_lbl))
-            val_inds = val_inds[num_samples_to_drop:]
-            new_train_inds = np.concatenate((val_inds[:num_samples_to_drop], new_train_inds))
-
-        datasets['val'] = {
-            'images': val_img,
-            'labels': val_lbl,
-            'sample_inds': val_inds,
-        }
-
-        datasets['train'] = {
-            'images': new_train_img,
-            'labels': new_train_lbl,
-            'sample_inds': new_train_inds,
-        }
+        datasets['val'], datasets['train'] = _split_stratified(img=datasets['train']['images'],
+                                                               lbl=datasets['train']['labels'],
+                                                               sample_inds=datasets['train']['sample_inds'],
+                                                               rng=rng,
+                                                               split_size=val_size,
+                                                               return_both=True)
 
     splits = ['train', 'test']
     if val_size:
