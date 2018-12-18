@@ -165,9 +165,11 @@ def prep(download_dir, val_size=None, random_seed=None,
     }
 
     if val_size:
+        # turns out MNIST has slight class imbalance, so we need to adjust val set after we make it
+        target_val_size = np.floor(val_size * len(datasets['train']['labels'])).astype(int)
+
         rng = np.random.RandomState()
         rng.seed(random_seed)
-        val_ind = np.floor(val_size * len(datasets['train']['labels'])).astype(int)
 
         new_train_img = []
         new_train_lbl = []
@@ -179,6 +181,7 @@ def prep(download_dir, val_size=None, random_seed=None,
         for digit_class in range(10):
             this_class_inds = np.where(datasets['train']['labels'] == digit_class)[0]
             rng.shuffle(this_class_inds)
+            val_ind = np.floor(val_size * len(this_class_inds)).astype(int)
 
             this_class_val_inds = this_class_inds[:val_ind]
             val_img.extend(datasets['train']['images'][this_class_val_inds])
@@ -190,16 +193,46 @@ def prep(download_dir, val_size=None, random_seed=None,
             new_train_lbl.extend(datasets['train']['labels'][this_class_train_inds])
             new_train_inds.extend(datasets['train']['sample_inds'][this_class_train_inds])
 
+        # shuffle both datasets, because they are currently in order by class
+        val_shuffle_inds = np.arange(len(val_lbl))
+        rng.shuffle(val_shuffle_inds)
+        val_img = np.asarray(val_img)[val_shuffle_inds]
+        val_lbl = np.asarray(val_lbl)[val_shuffle_inds]
+        val_inds = np.asarray(val_inds)[val_shuffle_inds]
+
+        train_shuffle_inds = np.arange(len(new_train_lbl))
+        rng.shuffle(np.arange(len(val_lbl)))
+        new_train_img = np.asarray(new_train_img)[train_shuffle_inds]
+        new_train_lbl = np.asarray(new_train_lbl)[train_shuffle_inds]
+        new_train_inds = np.asarray(new_train_inds)[train_shuffle_inds]
+
+        if len(val_lbl) < target_val_size:
+            num_samples_needed = target_val_size - len(val_lbl)
+            val_img = np.concatenate((val_img, new_train_img[:num_samples_needed]))
+            new_train_img = new_train_img[num_samples_needed:]
+            val_lbl = np.concatenate((val_lbl, new_train_lbl[:num_samples_needed]))
+            new_train_lbl = new_train_lbl[num_samples_needed:]
+            val_inds = np.concatenate((val_inds, new_train_inds[:num_samples_needed]))
+            new_train_inds = new_train_inds[num_samples_needed:]
+        elif len(val_lbl) > target_val_size:
+            num_samples_to_drop = len(val_lbl) - target_val_size
+            val_img = val_img[num_samples_to_drop:]
+            new_train_img = np.concatenate((val_img[:num_samples_to_drop], new_train_img))
+            val_lbl = val_lbl[num_samples_to_drop:]
+            new_train_lbl = np.concatenate((val_lbl[:num_samples_to_drop], new_train_lbl))
+            val_inds = val_inds[num_samples_to_drop:]
+            new_train_inds = np.concatenate((val_inds[:num_samples_to_drop], new_train_inds))
+
         datasets['val'] = {
-            'images': np.asarray(val_img),
-            'labels': np.asarray(val_lbl),
-            'sample_inds': np.asarray(val_inds),
+            'images': val_img,
+            'labels': val_lbl,
+            'sample_inds': val_inds,
         }
 
         datasets['train'] = {
-            'images': np.asarray(new_train_img),
-            'labels': np.asarray(new_train_lbl),
-            'sample_inds': np.asarray(new_train_inds),
+            'images': new_train_img,
+            'labels': new_train_lbl,
+            'sample_inds': new_train_inds,
         }
 
     splits = ['train', 'test']
