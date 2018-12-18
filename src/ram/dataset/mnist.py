@@ -167,7 +167,7 @@ def prep(download_dir, val_size=None, random_seed=None,
     if val_size:
         rng = np.random.RandomState()
         rng.seed(random_seed)
-        val_ind = np.floor(val_size * len(train_labels)).astype(int)
+        val_ind = np.floor(val_size * len(datasets['train']['labels'])).astype(int)
 
         new_train_img = []
         new_train_lbl = []
@@ -177,18 +177,18 @@ def prep(download_dir, val_size=None, random_seed=None,
         val_inds = []
 
         for digit_class in range(10):
-            this_class_inds = np.where(train_labels == digit_class)[0]
+            this_class_inds = np.where(datasets['train']['labels'] == digit_class)[0]
             rng.shuffle(this_class_inds)
 
             this_class_val_inds = this_class_inds[:val_ind]
-            val_img.extend(train_images[this_class_val_inds])
-            val_lbl.extend(train_labels[this_class_val_inds])
-            val_inds.extend(train_sample_inds[this_class_val_inds])
+            val_img.extend(datasets['train']['images'][this_class_val_inds])
+            val_lbl.extend(datasets['train']['labels'][this_class_val_inds])
+            val_inds.extend(datasets['train']['sample_inds'][this_class_val_inds])
 
             this_class_train_inds = this_class_inds[val_ind:]
-            new_train_img.extend(train_images[this_class_train_inds])
-            new_train_lbl.extend(train_labels[this_class_train_inds])
-            new_train_inds.extend(train_sample_inds[this_class_train_inds])
+            new_train_img.extend(datasets['train']['images'][this_class_train_inds])
+            new_train_lbl.extend(datasets['train']['labels'][this_class_train_inds])
+            new_train_inds.extend(datasets['train']['sample_inds'][this_class_train_inds])
 
         datasets['val'] = {
             'images': np.asarray(val_img),
