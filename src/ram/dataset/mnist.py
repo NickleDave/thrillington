@@ -20,7 +20,6 @@ import shutil
 import tempfile
 import urllib.request
 import struct
-from typing import NamedTuple
 
 import numpy as np
 import tensorflow as tf
@@ -96,6 +95,166 @@ def fetch_labels(labels_file):
     return labels.astype(np.int32)
 
 
+def prep(download_dir, val_size=None, random_seed=None,
+         train_images_file='train-images-idx3-ubyte', train_labels_file='train-labels-idx1-ubyte',
+         test_images_file='t10k-images-idx3-ubyte', test_labels_file='t10k-labels-idx1-ubyte',
+         output_dir=None):
+    """prepares MNIST dataset:
+    downloads files, checks validity of downloaded data, and creates a validation
+    set from a subset of the training set if 'val_size' is specified,
+    then saves images and labels as numpy arrays.
+    Datasets are stratified.
+
+    Parameters
+    ----------
+    val_size : float or None, optional (default=0.05)
+    random_seed : int
+        value with which to seed random number generator when initialized.
+        Default is None, in which case no seed is used.
+    output_dir : str
+        path to directory where .json file containing filenames split into
+        train, validation, and test sets should be saved. Default is None,
+        in which case file is saved in current directory.
+
+    Other Parameters
+    ----------------
+    train_images_file : str
+        Name of file with MNIST training images. Default is 'train-images-idx3-ubyte'.
+    train_labels_file : str
+        Name of file with MNIST training labels. Default is 'train-labels-idx1-ubyte'.
+    test_images_file : str
+        Name of file with MNIST test images. Default is 't10k-images-idx3-ubyte'.
+    test_labels_file : str
+        Name of file with MNIST test labels. Default is 't10k-labels-idx1-ubyte'.
+
+    Returns
+    -------
+    filenames : dict
+        with keys 'train', 'val', and 'test',
+        and value for each key being absolute paths
+        to files that contain that key's dataset
+    """
+    datasets = {}
+
+    if val_size is not None:
+        if val_size <= 0 or val_size >= 1.0:
+            raise ValueError('val_size must be >0.0 and <1.0')
+
+    train_images_file = download(download_dir, train_images_file)
+    train_labels_file = download(download_dir, train_labels_file)
+
+    check_image_file_header(train_images_file)
+    check_labels_file_header(train_labels_file)
+
+    datasets['train'] = {
+        'images': fetch_images(train_images_file),
+        'labels': fetch_labels(train_labels_file),
+        'sample_inds': np.arange(len(fetch_labels(train_labels_file))),
+    }
+
+    test_images_file = download(download_dir, test_images_file)
+    test_labels_file = download(download_dir, test_labels_file)
+
+    check_image_file_header(test_images_file)
+    check_labels_file_header(test_labels_file)
+
+    datasets['test'] = {
+        'images': fetch_images(test_images_file),
+        'labels': fetch_labels(test_labels_file),
+        'sample_inds': np.arange(len(fetch_labels(test_labels_file))),
+    }
+
+    if val_size:
+        # turns out MNIST has slight class imbalance, so we need to adjust val set after we make it
+        target_val_size = np.floor(val_size * len(datasets['train']['labels'])).astype(int)
+
+        rng = np.random.RandomState()
+        rng.seed(random_seed)
+
+        new_train_img = []
+        new_train_lbl = []
+        new_train_inds = []
+        val_img = []
+        val_lbl = []
+        val_inds = []
+
+        for digit_class in range(10):
+            this_class_inds = np.where(datasets['train']['labels'] == digit_class)[0]
+            rng.shuffle(this_class_inds)
+            val_ind = np.floor(val_size * len(this_class_inds)).astype(int)
+
+            this_class_val_inds = this_class_inds[:val_ind]
+            val_img.extend(datasets['train']['images'][this_class_val_inds])
+            val_lbl.extend(datasets['train']['labels'][this_class_val_inds])
+            val_inds.extend(datasets['train']['sample_inds'][this_class_val_inds])
+
+            this_class_train_inds = this_class_inds[val_ind:]
+            new_train_img.extend(datasets['train']['images'][this_class_train_inds])
+            new_train_lbl.extend(datasets['train']['labels'][this_class_train_inds])
+            new_train_inds.extend(datasets['train']['sample_inds'][this_class_train_inds])
+
+        # shuffle both datasets, because they are currently in order by class
+        val_shuffle_inds = np.arange(len(val_lbl))
+        rng.shuffle(val_shuffle_inds)
+        val_img = np.asarray(val_img)[val_shuffle_inds]
+        val_lbl = np.asarray(val_lbl)[val_shuffle_inds]
+        val_inds = np.asarray(val_inds)[val_shuffle_inds]
+
+        train_shuffle_inds = np.arange(len(new_train_lbl))
+        rng.shuffle(np.arange(len(val_lbl)))
+        new_train_img = np.asarray(new_train_img)[train_shuffle_inds]
+        new_train_lbl = np.asarray(new_train_lbl)[train_shuffle_inds]
+        new_train_inds = np.asarray(new_train_inds)[train_shuffle_inds]
+
+        if len(val_lbl) < target_val_size:
+            num_samples_needed = target_val_size - len(val_lbl)
+            val_img = np.concatenate((val_img, new_train_img[:num_samples_needed]))
+            new_train_img = new_train_img[num_samples_needed:]
+            val_lbl = np.concatenate((val_lbl, new_train_lbl[:num_samples_needed]))
+            new_train_lbl = new_train_lbl[num_samples_needed:]
+            val_inds = np.concatenate((val_inds, new_train_inds[:num_samples_needed]))
+            new_train_inds = new_train_inds[num_samples_needed:]
+        elif len(val_lbl) > target_val_size:
+            num_samples_to_drop = len(val_lbl) - target_val_size
+            val_img = val_img[num_samples_to_drop:]
+            new_train_img = np.concatenate((val_img[:num_samples_to_drop], new_train_img))
+            val_lbl = val_lbl[num_samples_to_drop:]
+            new_train_lbl = np.concatenate((val_lbl[:num_samples_to_drop], new_train_lbl))
+            val_inds = val_inds[num_samples_to_drop:]
+            new_train_inds = np.concatenate((val_inds[:num_samples_to_drop], new_train_inds))
+
+        datasets['val'] = {
+            'images': val_img,
+            'labels': val_lbl,
+            'sample_inds': val_inds,
+        }
+
+        datasets['train'] = {
+            'images': new_train_img,
+            'labels': new_train_lbl,
+            'sample_inds': new_train_inds,
+        }
+
+    splits = ['train', 'test']
+    if val_size:
+        splits.append('val')
+    paths_dict = {split: {} for split in splits}
+    for split, data_dict in datasets.items():
+        img_path = os.path.join(output_dir, f'MNIST_{split}_images.npy')
+        np.save(img_path, data_dict['images'])
+        paths_dict[split]['images'] = img_path
+
+        lbl_path = os.path.join(output_dir, f'MNIST_{split}_labels.npy')
+        np.save(lbl_path, data_dict['labels'])
+        paths_dict[split]['labels'] = lbl_path
+
+        ind_path = os.path.join(output_dir, f'MNIST_{split}_indices.npy')
+        np.save(ind_path, data_dict['sample_inds'])
+        paths_dict[split]['sample_inds'] = ind_path
+
+    return paths_dict
+
+
 def normalize(images):
     """
     Normalize images to [0.0,1.0]
@@ -105,52 +264,39 @@ def normalize(images):
     return images
 
 
-def _dataset(directory, images_file, labels_file, num_samples=None):
-    """Helper function that downloads (if necessary) and parses MNIST dataset.
-    Instead of calling this directly, call the train or test functions.
+def _dataset(images_file, labels_file, sample_inds_file):
+    """Helper function that packs a split of MNIST dataset into a Dataset object.
+    Instead of calling this directly, call the `get_split` function.
 
     Parameters
     ----------
-    directory : str
-        Directory where raw MNIST files exist or should be downloaded
     images_file : str
         one of {'train-images-idx3-ubyte', 't10k-images-idx3-ubyte'}
     labels_file : str
         one of {'train-labels-idx1-ubyte', 't10k-labels-idx1-ubyte'}
-    num_samples : int
-        number of samples to return from. If None, uses all samples
-        in dataset. Default is None.
+    sample_inds_file : str
 
     Returns
     -------
-    ds : tf.data.Dataset
-        that yields tuple pairs of:
-            img : tf.float32
-                images with shape (28, 28, 1) normalized to range [0.0, 1.0]
-            lbl : tf.uint8
-                labels with values 0-9
-    samples : int
-        number of samples in dataset
+    ram.data.Data named tuple with the following fields:
+        dataset : tf.data.Dataset
+            that yields tuple pairs of:
+                img : tf.float32
+                    images with shape (28, 28, 1) normalized to range [0.0, 1.0]
+                lbl : tf.uint8
+                    labels with values 0-9
+                sample_inds : tf.int32
+                    indices of samples from original MNIST dataset
+        num_samples : int
+            number of samples in dataset
+        sample_inds : np.ndarray
+            sample indices from original MNIST dataset (mostly important when
+            a validation set is used, meaning the MNIST training set was split
+            into training and validation subsets).
     """
-    images_file = download(directory, images_file)
-    labels_file = download(directory, labels_file)
-
-    check_image_file_header(images_file)
-    check_labels_file_header(labels_file)
-
-    images = fetch_images(images_file)
-    labels = fetch_labels(labels_file)
-
-    if num_samples:
-        if images.shape[0] < num_samples:
-            raise ValueError(f'Number of samples in dataset, {images.shape[0]}, is less than'
-                             f'number of samples to draw from that set, {num_samples}')
-
-        sample_inds = np.random.choice(np.arange(images.shape[0]), size=(num_samples,))
-        images = images[sample_inds, :, :, :]
-        labels = labels[sample_inds]
-    else:
-        sample_inds = np.arange(len(labels))
+    images = np.load(images_file)
+    labels = np.load(labels_file)
+    sample_inds = np.load(sample_inds_file)
 
     images = normalize(images)
 
@@ -163,17 +309,47 @@ def _dataset(directory, images_file, labels_file, num_samples=None):
     return data
 
 
-def train(directory, num_samples=None):
-    """tf.data.Dataset object for MNIST training data."""
-    return _dataset(directory=directory,
-                    images_file='train-images-idx3-ubyte',
-                    labels_file='train-labels-idx1-ubyte',
-                    num_samples=num_samples)
+def get_split(paths_dict, setname='train'):
+    """get data set from files
 
+    Parameters
+    ----------
+    paths_dict : dict
+        containing full paths to files containing images, labels, and sample indices as
+        numpy arrays. Will have keys 'train', 'test', and optionally 'val'.
+        returned by ram.datasets.mnist.prep function
+    setname : str or list
+        One of {'train', 'val', 'test'}, or a list with some combination of the three strings.
+        'val' returns the MNIST training data split into train and validation sets.
 
-def test(directory, num_samples=None):
-    """tf.data.Dataset object for MNIST test data."""
-    return _dataset(directory=directory,
-                    images_file='t10k-images-idx3-ubyte',
-                    labels_file='t10k-labels-idx1-ubyte',
-                    num_samples=num_samples)
+    Returns
+    -------
+    dataset : ram.dataset.Dataset
+        NamedTuple with two fields:
+            dataset : tensorflow.data.Dataset
+                images loaded from file names in the split specified
+            num_samples : int
+                number of samples in dataset
+            sample_inds : np.ndarray
+                indices of samples used for dataset
+
+    Examples
+    --------
+    >>> from ram.dataset.mnist import get_split
+    >>> train_data, val_data = get_split(paths_dict=paths_dict, setname=['train', 'val'])
+    >>> test_data = get_split(paths_dict=paths_dict, setname='test')
+    >>> ram.Trainer(config=config, train_data=train_data, val_data=val_data)
+    """
+    if type(setname) == str:
+        setname = [setname]  # so we can iterate over list (not over str which would cause an error)
+    valid_setnames = {'train', 'val', 'test'}
+    if not all(name in valid_setnames for name in setname):
+        raise ValueError(f"invalid dataset name in setname: '{setname}'.\n"
+                         "Must be 'train', 'val', or 'test'.")
+    data_obj_list = []
+    for name in setname:
+        data_obj_list.append(_dataset(images_file=paths_dict[name]['images'],
+                                      labels_file=paths_dict[name]['labels'],
+                                      sample_inds_file=paths_dict[name]['sample_inds'])
+                             )
+    return tuple(data_obj_list[:])
