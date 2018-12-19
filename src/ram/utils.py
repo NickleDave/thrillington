@@ -1,18 +1,61 @@
 import os
-import configparser
-from collections import namedtuple
-from distutils.util import strtobool
+from configparser import ConfigParser
+
+import attr
 
 this_file_dir = os.path.dirname(__file__)
 
-config_types = configparser.ConfigParser()
-config_types.read(os.path.join(this_file_dir, 'types.ini'))
+
+@attr.s
+class ModelConfig(object):
+    """class that represents configuration for RAM model"""
+    g_w = attr.ib(converter=int, default=8)
+    k = attr.ib(converter=int, default=3)
+    s = attr.ib(converter=int, default=2)
+    hg_size = attr.ib(converter=int, default=128)
+    hl_size = attr.ib(converter=int, default=128)
+    g_size = attr.ib(converter=int, default=256)
+    hidden_size = attr.ib(converter=int, default=256)
+    glimpses = attr.ib(converter=int, default=6)
+    num_classes = attr.ib(converter=int, default=10)
+    loc_std = attr.ib(converter=float, default=0.1)
+
+@attr.s
+class TrainConfig(object):
+    """class that represents configuration for training a RAM model"""
+    batch_size = attr.ib(converter=int, default=10)
+    learning_rate = attr.ib(converter=float, default=1e-3)
+    epochs = attr.ib(converter=int, default=200)
+    optimizer = attr.ib(type=str, default='momentum')
+    momentum = attr.ib(converter=float, default=0.9)
+    root_results_dir = attr.ib(type=str, default='.')
+    replicates = attr.ib(converter=int, default=5)
+    checkpoint_prefix = attr.ib(type=str, default='ckpt')
+    restore = attr.ib(converter=bool, default=False)
+    save_examples_every = attr.ib(converter=int, default=25)
+    num_examples_to_save = attr.ib(converter=int, default=9)
+    save_loss = attr.ib(converter=bool, default=False)
+    shuffle_each_epoch = attr.ib(converter=bool, default=True)
+    save_train_inds = attr.ib(converter=bool, default=False)
+
+@attr.s
+class DataConfig(object):
+    """class that represents data associated with model:
+    training data, testing data, checkpoints of trained model,
+    outputs during training, etc."""
+    output_dir = attr.ib(type=str, default='.')
+
+
+@attr.s
+class Config(object):
+    model = attr.ib(type=ModelConfig, default=ModelConfig())
+    train = attr.ib(type=TrainConfig, default=TrainConfig())
 
 
 def parse_config(config_file=None):
     """read config.ini file with config parser,
-    returns namedtuple ConfigTuple with
-    sections and options as attributes.
+    returns options from file loaded into an
+    instance of Config class.
 
     Parameters
     ----------
@@ -23,41 +66,21 @@ def parse_config(config_file=None):
 
     Returns
     -------
-    config : namedtuple
-        where fields are sections of the config, and
-        values for those fields are also namedtuples,
-        with fields being options and values being the
-        values for those options from the config.ini file.
+    config : instance of Config class
+        with attributes that represent configuration for model, training, and data
     """
-    config = configparser.ConfigParser()
-    # first read defaults
-    config.read(os.path.join(this_file_dir, 'default.ini'))
-    # then replace values with any specified by user
     if config_file is not None:
         if os.path.isfile(config_file):
+            config = ConfigParser()
             config.read(config_file)
         else:
             raise FileNotFoundError(f'did not find config file: {config_file}')
 
-    sections = [key for key in list(config.keys()) if key != 'DEFAULT']
-    ConfigTuple = namedtuple('ConfigTuple', sections)
-    config_dict = {}
-    for section in sections:
-        section_keys = list(config[section].keys())
-        section_values = list(config[section].values())
-        SubTup = namedtuple(section, section_keys)
-        subtup_dict = {}
-        for key, val in zip(section_keys, section_values):
-            val_type = config_types[section][key]
-            if val_type == 'int':
-                typed_val = int(val)
-            elif val_type == 'float':
-                typed_val = float(val)
-            elif val_type == 'bool':
-                typed_val = bool(strtobool(val))
-            elif val_type == 'str':
-                typed_val = val
-            subtup_dict[key] = typed_val
-        config_dict[section] = SubTup(**subtup_dict)
-    config = ConfigTuple(**config_dict)
+        model_config = ModelConfig(**config['model'])
+        train_config = TrainConfig(**config['train'])
+        config = Config(model=model_config, train=train_config)
+    else:
+        # return default config
+        config = Config()
+
     return config
