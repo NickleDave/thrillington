@@ -6,7 +6,7 @@ import attr
 VALID_OPTIONS = {
     'model': [
         'g_w',
-        'k'
+        'k',
         's',
         'hg_size',
         'hl_size',
@@ -130,29 +130,31 @@ def parse_config(config_file):
         config = ConfigParser()
         config.read(config_file)
         sections = set(config.sections())
-
-        if sections != VALID_SECTIONS:
-            if sections < VALID_SECTIONS:
-                missing_sections = VALID_SECTIONS - sections
-                raise ValueError(f'config missing section(s): {missing_sections}')
-            elif sections > VALID_SECTIONS:
-                extra_sections = sections - VALID_SECTIONS
-                raise ValueError(f'sections in config not valid: {extra_sections}')
-
-        for section in sections:
-            options = set(config.options(section))
-            valid_options = set(VALID_OPTIONS[section])
-            # any options not defined go to default
-            if options > valid_options:
-                extra_options = options - valid_options
-                raise ValueError(f'options in in config section {section} not valid: {extra_options}')
-            if section == 'data':
-                if 'root_results_dir' not in options:
-                    raise ValueError("config must specify 'root_results_dir' option")
-                if 'data_dir' not in options:
-                    raise ValueError("config must specify 'data_dir' option")
     else:
         raise FileNotFoundError(f'did not find config file: {config_file}')
+
+    if sections != VALID_SECTIONS:
+        if sections < VALID_SECTIONS:
+            missing_sections = VALID_SECTIONS - sections
+            raise ValueError(f'config missing section(s): {missing_sections}')
+        elif not VALID_SECTIONS >= sections:
+            extra_sections = sections - VALID_SECTIONS
+            raise ValueError(f'sections in config not valid: {extra_sections}')
+
+    for section in sections:
+        options = set(config.options(section))
+        valid_options = set(VALID_OPTIONS[section])
+        # any options not defined go to default, so don't check if options < valid_options
+        # but do check if valid_options is a superset of options,
+        # i.e. test whether every element in options is in valid_options
+        if not valid_options >= options:
+            extra_options = options - valid_options
+            raise ValueError(f'options in in config section {section} not valid: {extra_options}')
+        if section == 'data':
+            if 'root_results_dir' not in options:
+                raise ValueError("config must specify 'root_results_dir' option")
+            if 'data_dir' not in options:
+                raise ValueError("config must specify 'data_dir' option")
 
     model_config = ModelConfig(**config['model'])
     train_config = TrainConfig(**config['train'])
