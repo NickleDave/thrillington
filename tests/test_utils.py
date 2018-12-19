@@ -1,6 +1,6 @@
 import os
 
-import ram.utils
+import ram.config
 
 this_file_dir = os.path.dirname(__file__)
 default_config_file = os.path.join(this_file_dir,
