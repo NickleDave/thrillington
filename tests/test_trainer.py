@@ -17,7 +17,7 @@ class TestInit(unittest.TestCase):
     def test_num_samples_batch_size_mismatch(self):
         # __init__ should raise an error if
         # num samples % batch size != 0
-        config = ram.utils.parse_config(config_file=None)  # default batch size is 10
+        config = ram.config.parse_config(config_file=None)  # default batch size is 10
         data = ram.mnist.dataset.train(directory=self.test_dir, num_samples=23)
         with self.assertRaises(ValueError):
             ram.Trainer(config, data)

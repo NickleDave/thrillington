@@ -11,11 +11,11 @@ https://github.com/seann999/tensorflow_mnist_ram
 import os
 import time
 from collections import namedtuple
-from datetime import datetime
 
 import tensorflow as tf
 import numpy as np
 from tqdm import tqdm
+import attr
 
 from . import ram
 
@@ -60,13 +60,18 @@ class Trainer:
                              f'is not evenly divisible by batch size, {config.train.batch_size}.\n'
                              f'This will cause an error when training network;'
                              f'please change either so that data.num_samples % config.train.batch_size == 0:')
+
+        self.config = config
+
         # apply model config
         self.model = ram.RAM(batch_size=config.train.batch_size,
-                             **config.model._asdict())
+                             **attr.asdict(config.model))
 
         # then unpack train config
         self.train_data = train_data.dataset
         self.num_train_samples = train_data.num_samples
+
+        self.replicates = config.train.replicates
 
         if val_data:
             self.val_data = val_data.dataset
@@ -85,44 +90,29 @@ class Trainer:
             self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate)
         self.restore = config.train.restore
 
-        timenow = datetime.now().strftime('%y%m%d_%H%M%S')
-        results_dirname = 'RAM_results_' + timenow
-        self.results_dir = os.path.join(config.train.root_results_dir, results_dirname)
-
-        if not os.path.isdir(self.results_dir):
-            os.makedirs(self.results_dir)
-
-        self.checkpoint_dir = os.path.join(self.results_dir, 'checkpoint')
-        if not os.path.isdir(self.checkpoint_dir):
-            os.makedirs(self.checkpoint_dir)
-        self.checkpoint_path = os.path.join(self.checkpoint_dir,
+        self.checkpoint_path = os.path.join(config.data.checkpoint_dir,
                                             config.train.checkpoint_prefix)
         self.checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
                                                 model=self.model,
                                                 optimizer_step=tf.train.get_or_create_global_step())
-        if hasattr(config.train, 'save_examples_every'):
-            self.save_examples_every = config.train.save_examples_every
-            self.examples_dir = os.path.join(self.results_dir, 'examples')
-            if not os.path.isdir(self.examples_dir):
-                os.makedirs(self.examples_dir)
-            self.num_examples_to_save = config.train.num_examples_to_save
 
-        self.save_loss = config.train.save_loss
+        if hasattr(config.data, 'save_examples_every'):
+            self.save_examples_every = config.data.save_examples_every
+            self.examples_dir = config.data.examples_dir
+            self.num_examples_to_save = config.data.num_examples_to_save
+
+        self.save_loss = config.data.save_loss
         if self.save_loss:
-            self.loss_dir = os.path.join(self.results_dir, 'loss')
-            if not os.path.isdir(self.loss_dir):
-                os.makedirs(self.loss_dir)
+            self.loss_dir = config.data.loss_dir
 
         self.shuffle_each_epoch = config.train.shuffle_each_epoch
         if self.shuffle_each_epoch:
             self.train_data = self.train_data.shuffle(buffer_size=self.num_train_samples,
                                                       reshuffle_each_iteration=True)
 
-        self.save_train_inds = config.train.save_train_inds
+        self.save_train_inds = config.data.save_train_inds
         if self.save_train_inds:
-            self.train_inds_dir = os.path.join(self.results_dir, 'train_inds')
-            if not os.path.isdir(self.train_inds_dir):
-                os.makedirs(self.train_inds_dir)
+            self.train_inds_dir = config.data.train_inds_dir
 
     def load_checkpoint(self):
         """loads model and optimizer from a checkpoint.
@@ -144,6 +134,7 @@ class Trainer:
         else:
             print('config.train.resume is False,\n'
                   f'will save new model and optimizer to checkpoint: {self.checkpoint_path}')
+
         for epoch in range(1, self.epochs+1):
             print(
                 f'\nEpoch: {epoch}/{self.epochs} - learning rate: {self.learning_rate:.6f}'

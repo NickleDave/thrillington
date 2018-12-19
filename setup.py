@@ -24,7 +24,7 @@ VERSION = '0.0.1a1'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
-    'numpy', 'tensorflow', 'tqdm'
+    'numpy', 'tensorflow', 'tqdm', 'attrs'
 ]
 
 # What packages are optional?
@@ -106,9 +106,9 @@ setup(
     url=URL,
     packages=find_packages(where="src", exclude=('tests',)),
     package_dir={"": "src"},
-    # entry_points={
-    #     'console_scripts': ['mycli=mymodule:cli'],
-    # },
+    entry_points={
+        'console_scripts': ['ram=ram.__main__:main'],
+    },
     install_requires=REQUIRED,
     extras_require=EXTRAS,
     include_package_data=True,
