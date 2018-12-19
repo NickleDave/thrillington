@@ -45,6 +45,7 @@ def main():
                                     'logfile_from_ram_' + timenow + '.log')
         logger.addHandler(logging.FileHandler(logfile_name))
         logger.info('Logging results to {}'.format(results_dir))
+        config.train.logfile_name = logfile_name
 
     logger.info(f'Using config file: {args.config}')
 
