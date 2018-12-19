@@ -26,6 +26,7 @@ VALID_OPTIONS = {
         'checkpoint_prefix',
         'restore',
         'shuffle_each_epoch',
+        'save_log'
     ],
     'data': [
         'root_results_dir',
@@ -70,6 +71,7 @@ class TrainConfig(object):
     checkpoint_prefix = attr.ib(type=str, default='ckpt')
     restore = attr.ib(converter=bool, default=False)
     shuffle_each_epoch = attr.ib(converter=bool, default=True)
+    save_log = attr.ib(converter=bool, default=True)
     # user does not specify current replicate, gets changed by main()
     current_replicate = attr.ib(type=int, default=None)
 
