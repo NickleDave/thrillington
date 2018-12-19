@@ -35,6 +35,7 @@ def main():
             val_data = None
 
     for replicate in range(config.train.replicates):
+        config.train.current_replicate = replicate
         trainer = ram.Trainer(config=config,
                               train_data=train_data,
                               val_data=val_data)
