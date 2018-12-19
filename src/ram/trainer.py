@@ -9,8 +9,10 @@ https://github.com/seann999/tensorflow_mnist_ram
    https://arxiv.org/abs/1406.6247
 """
 import os
+import sys
 import time
 from collections import namedtuple
+import logging
 
 import tensorflow as tf
 import numpy as np
@@ -61,23 +63,33 @@ class Trainer:
                              f'This will cause an error when training network;'
                              f'please change either so that data.num_samples % config.train.batch_size == 0:')
 
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel('INFO')
+        self.logger.addHandler(logging.StreamHandler(sys.stdout))
+
+        if config.train.save_log:
+            self.logger.addHandler(logging.FileHandler(config.train.logfile_name))
+
         self.config = config
+        self.logger.info(f'Trainer config: {config}')
 
         # apply model config
         self.model = ram.RAM(batch_size=config.train.batch_size,
                              **attr.asdict(config.model))
+        self.logger.info(f'Model that will be trained: {self.model}')
 
         # then unpack train config
         self.train_data = train_data.dataset
+        self.logger.info(f'Training data: {self.train_data}')
         self.num_train_samples = train_data.num_samples
-
-        self.replicates = config.train.replicates
 
         if val_data:
             self.val_data = val_data.dataset
+            self.logger.info(f'Validation data: {self.val_data}')
             self.num_val_samples = val_data.num_samples
         else:
             self.val_data = None
+            self.logger.info(f'Validation data: {self.val_data}')
             self.num_val_samples = None
 
         self.batch_size = config.train.batch_size
@@ -128,15 +140,15 @@ class Trainer:
         """trains RAM model
         """
         if self.restore:
-            print('config.train.restore is True,\n'
-                  f'loading model and optimizer from checkpoint: {self.checkpoint_path}')
+            self.logger.info('config.train.restore is True,\n'
+                             f'loading model and optimizer from checkpoint: {self.checkpoint_path}')
             self.load_checkpoint()
         else:
-            print('config.train.resume is False,\n'
-                  f'will save new model and optimizer to checkpoint: {self.checkpoint_path}')
+            self.logger.info('config.train.resume is False,\n'
+                             f'will save new model and optimizer to checkpoint: {self.checkpoint_path}')
 
         for epoch in range(1, self.epochs+1):
-            print(
+            self.logger.info(
                 f'\nEpoch: {epoch}/{self.epochs} - learning rate: {self.learning_rate:.6f}'
             )
 
@@ -151,11 +163,11 @@ class Trainer:
             mn_acc = mn_acc_dict['mn_acc']
             if 'mn_val_acc' in mn_acc_dict:
                 mn_val_acc = mn_acc_dict['mn_val_acc']
-                print(f'mean accuracy: {mn_acc}\n'
-                      f'mean validation accuracy: {mn_val_acc}\n'
-                      f'mean losses: {mn_loss}')
+                self.logger.info(f'mean accuracy: {mn_acc}\n'
+                                 f'mean validation accuracy: {mn_val_acc}\n'
+                                 f'mean losses: {mn_loss}')
             else:
-                print(f'mean accuracy: {mn_acc}\nmean losses: {mn_loss}')
+                self.logger.info(f'mean accuracy: {mn_acc}\nmean losses: {mn_loss}')
             self.save_checkpoint()
             if self.save_loss:
                 for loss_name, loss_arr in losses._asdict().items():
@@ -310,7 +322,7 @@ class Trainer:
             np.save(train_inds_fname, train_inds)
 
         if self.val_data:
-            print('calculating validation accuracy')
+            self.logger.info('calculating validation accuracy')
             val_accs = []
             with tqdm(total=self.num_val_samples) as progress_bar:
                 for img, lbl, batch_train_inds in self.val_data.batch(self.batch_size):
