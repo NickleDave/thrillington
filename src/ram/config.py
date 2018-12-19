@@ -88,7 +88,12 @@ class DataConfig(object):
     num_examples_to_save = attr.ib(converter=int, default=9)
     save_loss = attr.ib(converter=bool, default=False)
     save_train_inds = attr.ib(converter=bool, default=False)
-
+    # dirs below are added by __main__ for each replicate
+    # (assuming e.g. save_examples == True)
+    checkpoint_dir = attr.ib(type=str, default=None)
+    examples_dir = attr.ib(type=str, default=None)
+    loss_dir = attr.ib(type=str, default=None)
+    train_inds_dir = attr.ib(type=str, default=None)
 
 @attr.s
 class Config(object):
