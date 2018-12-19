@@ -26,6 +26,7 @@ VALID_OPTIONS = {
         'checkpoint_prefix',
         'restore',
         'shuffle_each_epoch',
+        'save_log'
     ],
     'data': [
         'root_results_dir',
@@ -41,6 +42,22 @@ VALID_OPTIONS = {
 }
 
 VALID_SECTIONS = set(VALID_OPTIONS.keys())
+
+
+# adapted from cPython/Lib/distutils/util.py
+def strtobool(val):
+    """Convert a string representation of truth to true (1) or false (0).
+    True values are 'y', 'yes', 't', 'true', 'on', and '1'; false values
+    are 'n', 'no', 'f', 'false', 'off', and '0'.  Raises ValueError if
+    'val' is anything else.
+    """
+    val = val.lower()
+    if val in ('y', 'yes', 't', 'true', 'on', '1'):
+        return True
+    elif val in ('n', 'no', 'f', 'false', 'off', '0'):
+        return False
+    else:
+        raise ValueError("invalid truth value %r" % (val,))
 
 
 @attr.s
@@ -68,10 +85,13 @@ class TrainConfig(object):
     momentum = attr.ib(converter=float, default=0.9)
     replicates = attr.ib(converter=int, default=5)
     checkpoint_prefix = attr.ib(type=str, default='ckpt')
-    restore = attr.ib(converter=bool, default=False)
-    shuffle_each_epoch = attr.ib(converter=bool, default=True)
+    restore = attr.ib(converter=strtobool, default='False')
+    shuffle_each_epoch = attr.ib(converter=strtobool, default='True')
+    save_log = attr.ib(converter=strtobool, default='True')
     # user does not specify current replicate, gets changed by main()
     current_replicate = attr.ib(type=int, default=None)
+    # user does not specify logfile name, gets added by main()
+    logfile_name = attr.ib(type=attr.converters.optional(str), default=None)
 
 
 @attr.s
@@ -82,18 +102,19 @@ class DataConfig(object):
     root_results_dir = attr.ib(type=str)
     data_dir = attr.ib(type=str)
     type = attr.ib(type=str, default='mnist')
-    train_size = attr.ib(converter=float, default=None)
-    val_size = attr.ib(converter=float, default=None)
+    train_size = attr.ib(converter=attr.converters.optional(float), default=None)
+    val_size = attr.ib(converter=attr.converters.optional(float), default=None)
     save_examples_every = attr.ib(converter=int, default=25)
     num_examples_to_save = attr.ib(converter=int, default=9)
-    save_loss = attr.ib(converter=bool, default=False)
-    save_train_inds = attr.ib(converter=bool, default=False)
+    save_loss = attr.ib(converter=strtobool, default='False')
+    save_train_inds = attr.ib(converter=strtobool, default='False')
     # dirs below are added by __main__ for each replicate
     # (assuming e.g. save_examples == True)
-    checkpoint_dir = attr.ib(type=str, default=None)
-    examples_dir = attr.ib(type=str, default=None)
-    loss_dir = attr.ib(type=str, default=None)
-    train_inds_dir = attr.ib(type=str, default=None)
+    checkpoint_dir = attr.ib(type=attr.converters.optional(str), default=None)
+    examples_dir = attr.ib(type=attr.converters.optional(str), default=None)
+    loss_dir = attr.ib(type=attr.converters.optional(str), default=None)
+    train_inds_dir = attr.ib(type=attr.converters.optional(str), default=None)
+
 
 @attr.s
 class Config(object):
