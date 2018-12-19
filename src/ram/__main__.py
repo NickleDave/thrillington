@@ -21,21 +21,16 @@ def main():
                         help='run experiment with configuration defined in config.ini file\n'
                              '$ ram-cli --config scripts/ram_configs/config_2018-12-17.ini')
     args = parser.parse_args()
-
     config = ram.parse_config(args.config)
 
-    data_dir = config.data.data_dir
     if config.data.type == 'mnist':
+        paths_dict = ram.dataset.mnist.prep(download_dir=config.data.data_dir,
+                                            train_size=config.data.train_size,
+                                            val_size=config.data.val_size,
+                                            output_dir=config.data.data_dir)
         if config.data.val_size:
-            paths_dict = ram.dataset.mnist.prep(download_dir=data_root,
-                                                train_size=config.data.train_size,
-                                                val_size=config.data.val_size,
-                                                output_dir=data_root)
             train_data, val_data = ram.dataset.mnist.get_split(paths_dict, setname=['train', 'val'])
         else:
-            paths_dict = ram.dataset.mnist.prep(download_dir=data_root,
-                                                train_size=config.data.train_size,
-                                                output_dir=data_root)
             train_data = ram.dataset.mnist.get_split(paths_dict, setname=['train'])
             val_data = None
 
