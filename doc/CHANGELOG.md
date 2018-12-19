@@ -8,8 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - ability to use only a subset of MNIST training data and get a validation set from it
 - ability to shuffle dataset on each epoch
+- ability to train replicates (experiment repeated n times with same training data,
+ only random initialization / shuffling different)
+- logging
 - tests for MNIST module in datasets
 - a CHANGELOG (this one)
+
 
 ## [0.1.0a1] - 2018-06-20
 ### Added
