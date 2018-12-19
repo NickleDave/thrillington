@@ -3,7 +3,44 @@ from configparser import ConfigParser
 
 import attr
 
-this_file_dir = os.path.dirname(__file__)
+VALID_OPTIONS = {
+    'model': [
+        'g_w',
+        'k'
+        's',
+        'hg_size',
+        'hl_size',
+        'g_size',
+        'hidden_size',
+        'glimpses',
+        'num_classes',
+        'loc_std'
+    ],
+    'train': [
+        'batch_size',
+        'learning_rate',
+        'epochs',
+        'optimizer',
+        'momentum',
+        'replicates',
+        'checkpoint_prefix',
+        'restore',
+        'shuffle_each_epoch',
+    ],
+    'data': [
+        'root_results_dir',
+        'data_dir',
+        'type',
+        'train_size',
+        'val_size',
+        'save_examples_every',
+        'num_examples_to_save',
+        'save_loss',
+        'save_train_inds',
+    ],
+}
+
+VALID_SECTIONS = set(VALID_OPTIONS.keys())
 
 
 @attr.s
@@ -20,6 +57,7 @@ class ModelConfig(object):
     num_classes = attr.ib(converter=int, default=10)
     loc_std = attr.ib(converter=float, default=0.1)
 
+
 @attr.s
 class TrainConfig(object):
     """class that represents configuration for training a RAM model"""
@@ -28,31 +66,50 @@ class TrainConfig(object):
     epochs = attr.ib(converter=int, default=200)
     optimizer = attr.ib(type=str, default='momentum')
     momentum = attr.ib(converter=float, default=0.9)
-    root_results_dir = attr.ib(type=str, default='.')
     replicates = attr.ib(converter=int, default=5)
     checkpoint_prefix = attr.ib(type=str, default='ckpt')
     restore = attr.ib(converter=bool, default=False)
-    save_examples_every = attr.ib(converter=int, default=25)
-    num_examples_to_save = attr.ib(converter=int, default=9)
-    save_loss = attr.ib(converter=bool, default=False)
     shuffle_each_epoch = attr.ib(converter=bool, default=True)
-    save_train_inds = attr.ib(converter=bool, default=False)
+    # user does not specify current replicate, gets changed by main()
+    current_replicate = attr.ib(type=int, default=None)
+
 
 @attr.s
 class DataConfig(object):
     """class that represents data associated with model:
     training data, testing data, checkpoints of trained model,
     outputs during training, etc."""
-    output_dir = attr.ib(type=str, default='.')
+    root_results_dir = attr.ib(type=str)
+    data_dir = attr.ib(type=str)
+    type = attr.ib(type=str, default='mnist')
+    train_size = attr.ib(converter=float, default=None)
+    val_size = attr.ib(converter=float, default=None)
+    save_examples_every = attr.ib(converter=int, default=25)
+    num_examples_to_save = attr.ib(converter=int, default=9)
+    save_loss = attr.ib(converter=bool, default=False)
+    save_train_inds = attr.ib(converter=bool, default=False)
 
 
 @attr.s
 class Config(object):
+    """class that represents configuration loaded from config.ini file
+
+    Attributes
+    ----------
+    model : ModelConfig
+        instance of ModelConfig class, represents configuration of model
+    train : TrainConfig
+        instance of TrainConfig class, represents configuration for training model
+    data : DataConfig
+        instance of DataConfig class, represent configuration for data associated
+        with model (training, testing, outputs)
+    """
+    data = attr.ib(type=DataConfig)
     model = attr.ib(type=ModelConfig, default=ModelConfig())
     train = attr.ib(type=TrainConfig, default=TrainConfig())
 
 
-def parse_config(config_file=None):
+def parse_config(config_file):
     """read config.ini file with config parser,
     returns options from file loaded into an
     instance of Config class.
@@ -69,18 +126,36 @@ def parse_config(config_file=None):
     config : instance of Config class
         with attributes that represent configuration for model, training, and data
     """
-    if config_file is not None:
-        if os.path.isfile(config_file):
-            config = ConfigParser()
-            config.read(config_file)
-        else:
-            raise FileNotFoundError(f'did not find config file: {config_file}')
+    if os.path.isfile(config_file):
+        config = ConfigParser()
+        config.read(config_file)
+        sections = set(config.sections())
 
-        model_config = ModelConfig(**config['model'])
-        train_config = TrainConfig(**config['train'])
-        config = Config(model=model_config, train=train_config)
+        if sections != VALID_SECTIONS:
+            if sections < VALID_SECTIONS:
+                missing_sections = VALID_SECTIONS - sections
+                raise ValueError(f'config missing section(s): {missing_sections}')
+            elif sections > VALID_SECTIONS:
+                extra_sections = sections - VALID_SECTIONS
+                raise ValueError(f'sections in config not valid: {extra_sections}')
+
+        for section in sections:
+            options = set(config.options(section))
+            valid_options = set(VALID_OPTIONS[section])
+            # any options not defined go to default
+            if options > valid_options:
+                extra_options = options - valid_options
+                raise ValueError(f'options in in config section {section} not valid: {extra_options}')
+            if section == 'data':
+                if 'root_results_dir' not in options:
+                    raise ValueError("config must specify 'root_results_dir' option")
+                if 'data_dir' not in options:
+                    raise ValueError("config must specify 'data_dir' option")
     else:
-        # return default config
-        config = Config()
+        raise FileNotFoundError(f'did not find config file: {config_file}')
 
+    model_config = ModelConfig(**config['model'])
+    train_config = TrainConfig(**config['train'])
+    data_config = DataConfig(**config['data'])
+    config = Config(model=model_config, train=train_config, data=data_config)
     return config
