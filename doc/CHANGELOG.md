@@ -10,7 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - ability to shuffle dataset on each epoch
 - ability to train replicates (experiment repeated n times with same training data,
  only random initialization / shuffling different)
-- logging
+- ability to specify other modules to use to load other datasets
+  + an example is provided to load the [kanji MNIST dataset](https://github.com/rois-codh/kmnist)
+- logging of runs/experiments, with option to dump to a text file
 - tests for MNIST module in datasets
 - a CHANGELOG (this one)
 
