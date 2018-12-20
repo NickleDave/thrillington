@@ -278,15 +278,15 @@ def prep(download_dir, train_size=None, val_size=None, random_seed=None,
         splits.append('val')
     paths_dict = {split: {} for split in splits}
     for split, data_dict in datasets.items():
-        img_path = os.path.join(output_dir, f'MNIST_{split}_images.npy')
+        img_path = os.path.join(output_dir, f'{split}_images.npy')
         np.save(img_path, data_dict['images'])
         paths_dict[split]['images'] = img_path
 
-        lbl_path = os.path.join(output_dir, f'MNIST_{split}_labels.npy')
+        lbl_path = os.path.join(output_dir, f'{split}_labels.npy')
         np.save(lbl_path, data_dict['labels'])
         paths_dict[split]['labels'] = lbl_path
 
-        ind_path = os.path.join(output_dir, f'MNIST_{split}_indices.npy')
+        ind_path = os.path.join(output_dir, f'{split}_indices.npy')
         np.save(ind_path, data_dict['sample_inds'])
         paths_dict[split]['sample_inds'] = ind_path
 
