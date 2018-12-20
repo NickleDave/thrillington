@@ -33,17 +33,15 @@ MeanLossTuple = namedtuple('MeanLossTuple', ['mn_reinforce_loss',
 
 
 class Tester:
-    """Trainer object for training the RAM model"""
+    """Class for measuring accuracy of trained RAM model on a test data set"""
     def __init__(self,
                  config,
-                 train_data,
-                 val_data=None
                  ):
         """__init__ for Trainer"""
         self.model = ram.RAM(batch_size=config.train.batch_size,
                         **config.model._asdict())
-        self.learning_rate = config.train.learning_rate
 
+        self.learning_rate = config.train.learning_rate
         if config.train.optimizer == 'momentum':
             self.optimizer = tf.train.MomentumOptimizer(momentum=config.train.momentum,
                                                         learning_rate=self.learning_rate)
@@ -55,12 +53,12 @@ class Tester:
                                            optimizer_step=tf.train.get_or_create_global_step())
         checkpoint_path = config.data.checkpoint_path
         checkpointer.restore(tf.train.latest_checkpoint(checkpoint_path))
-        
+
         self.batch_size = config.train.batch_size
         self.test_data = test_data
 
-    def get_test_acc(self, save_examples=False,
-                     test_examples_dir='./test_examples/', num_examples_to_save=9):
+    def test(self, test_data, save_examples=False, test_examples_dir='./test_examples/',
+             num_examples_to_save=9):
         """compute accuracy of trained RAM model on test data set"""
         accs = []
 
@@ -68,17 +66,17 @@ class Tester:
 
         with tqdm(total=test_data.num_samples) as progress_bar:
             batch = 0
-            for img, lbl in test_data.dataset.batch(batch_size):
+            for img, lbl, sample_inds in test_data.dataset.batch(self.batch_size):
                 batch += 1
 
-                out_t_minus_1 = model.reset()
+                out_t_minus_1 = self.model.reset()
 
                 if save_examples:
                     locs = []
                     fixations = []
 
-                for t in range(model.glimpses):
-                    out = model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
+                for t in range(self.model.glimpses):
+                    out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
 
                     if save_examples:
                         locs.append(out.l_t.numpy()[:num_examples_to_save, :])
@@ -101,7 +99,7 @@ class Tester:
                         "{:.1f}s - acc: {:.3f}".format((toc - tic), acc)
                     )
                 )
-                progress_bar.update(batch_size)
+                progress_bar.update(self.batch_size)
 
         if save_examples:
             locs = np.asarray(locs)
