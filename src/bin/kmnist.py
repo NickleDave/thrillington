@@ -28,15 +28,17 @@ def prep(download_dir, dataset='kmnist', train_size=None, val_size=None, random_
 
     if dataset not in download_dict.keys():
         raise KeyError(f'dataset name {dataset} not recognized')
-    url_root = 'http://codh.rois.ac.jp/kmnist/dataset/kmnist/' + dataset + '/'
-    ram.dataset.prep(download_dir, train_size=train_size, val_size=val_size, random_seed=random_seed,
-                     train_images_file=download_dict[dataset]['train_images_file'],
-                     train_labels_file=download_dict[dataset]['train_labels_file'],
-                     test_images_file=download_dict[dataset]['test_images_file'],
-                     test_labels_file=download_dict[dataset]['test_labels_file'],
-                     url_root=url_root, url_file_extension=download_dict[dataset]['url_file_extension'],
-                     output_dir=output_dir)
+    url_root = 'http://codh.rois.ac.jp/kmnist/dataset/' + dataset + '/'
+    paths_dict = ram.dataset.mnist.prep(download_dir, train_size=train_size, val_size=val_size, random_seed=random_seed,
+                                        train_images_file=download_dict[dataset]['train_images_file'],
+                                        train_labels_file=download_dict[dataset]['train_labels_file'],
+                                        test_images_file=download_dict[dataset]['test_images_file'],
+                                        test_labels_file=download_dict[dataset]['test_labels_file'],
+                                        url_root=url_root,
+                                        url_file_extension=download_dict[dataset]['url_file_extension'],
+                                        output_dir=output_dir)
+    return paths_dict
 
 
 def get_split(paths_dict, setname='train'):
-    ram.dataset.mnist.get_split(paths_dict, setname)
+    return ram.dataset.mnist.get_split(paths_dict, setname)
