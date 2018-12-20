@@ -10,6 +10,8 @@ import sys
 import argparse
 from datetime import datetime
 import logging
+import importlib
+import importlib.util
 
 import tensorflow as tf
 
@@ -49,23 +51,35 @@ def main():
 
     logger.info(f'Using config file: {args.config}')
 
-    if config.data.type == 'mnist':
-        logger.info(f'\nUsing MNIST data set')
-        paths_dict = ram.dataset.mnist.prep(download_dir=config.data.data_dir,
-                                            train_size=config.data.train_size,
-                                            val_size=config.data.val_size,
-                                            output_dir=config.data.data_dir)
-        logger.info(f'Prepared dataset from {config.data.data_dir}')
-        logger.info(f'train size (None = use all training data): {config.data.train_size}')
-        logger.info(f'val size (None = no validation set): {config.data.val_size}')
-        logger.info(f'saved .npy files in: {config.data.data_dir}')
-        logger.info(f"Full paths to files returned by dataset.mnist.prep:\n{paths_dict}")
-        if config.data.val_size:
-            logger.info(f'Will use validation data set')
-            train_data, val_data = ram.dataset.mnist.get_split(paths_dict, setname=['train', 'val'])
+    try:
+        dataset_module = importlib.import_module(name=config.data.module)
+    except ModuleNotFoundError:
+        if os.path.isfile(config.data.module):
+            module_name = os.path.basename(config.data.module)
+            if module_name.endswith('.py'):
+                module_name = module_name.replace('.py', '')
         else:
-            train_data = ram.dataset.mnist.get_split(paths_dict, setname=['train'])
-            val_data = None
+            raise FileNotFoundError(f'{config.data.module} could not be imported, and not recognized as a file')
+        spec = importlib.util.spec_from_file_location(name=module_name, location=config.data.module)
+        dataset_module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(dataset_module)
+
+    logger.info(f'\nUsing {config.data.module} module to prepare and load datasets')
+    paths_dict = dataset_module.prep(download_dir=config.data.data_dir,
+                                     train_size=config.data.train_size,
+                                     val_size=config.data.val_size,
+                                     output_dir=config.data.data_dir)
+    logger.info(f'Prepared dataset from {config.data.data_dir}')
+    logger.info(f'train size (None = use all training data): {config.data.train_size}')
+    logger.info(f'val size (None = no validation set): {config.data.val_size}')
+    logger.info(f'saved .npy files in: {config.data.data_dir}')
+    logger.info(f"Full paths to files returned by dataset.mnist.prep:\n{paths_dict}")
+    if config.data.val_size:
+        logger.info(f'Will use validation data set')
+        train_data, val_data = dataset_module.get_split(paths_dict, setname=['train', 'val'])
+    else:
+        train_data = dataset_module.get_split(paths_dict, setname=['train'])
+        val_data = None
 
     for replicate in range(1, config.train.replicates + 1):
         logger.info(f"Starting replicate {replicate}\n")
