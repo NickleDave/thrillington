@@ -31,7 +31,7 @@ VALID_OPTIONS = {
     'data': [
         'root_results_dir',
         'data_dir',
-        'type',
+        'module',
         'train_size',
         'val_size',
         'save_examples_every',
@@ -101,7 +101,7 @@ class DataConfig(object):
     outputs during training, etc."""
     root_results_dir = attr.ib(type=str)
     data_dir = attr.ib(type=str)
-    type = attr.ib(type=str, default='mnist')
+    module = attr.ib(type=str, default='mnist')
     train_size = attr.ib(converter=attr.converters.optional(float), default=None)
     val_size = attr.ib(converter=attr.converters.optional(float), default=None)
     save_examples_every = attr.ib(converter=int, default=25)
