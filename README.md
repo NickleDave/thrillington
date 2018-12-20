@@ -6,35 +6,25 @@ Advances in neural information processing systems. 2014.
 <https://papers.nips.cc/paper/5542-recurrent-models-of-visual-attention>
 
 Based in part on the following implementations:  
-https://github.com/kevinzakka/recurrent-visual-attention  
-https://github.com/seann999/tensorflow_mnist_ram  
+<https://github.com/kevinzakka/recurrent-visual-attention>  
+and
+<https://github.com/seann999/tensorflow_mnist_ram>  
 (MIT license: https://github.com/seann999/tensorflow_mnist_ram/blob/master/LICENSE)
 
 ## installation
 `$ pip install ram`
 
 ## usage
+The library can be run from the command line with a config file.
+```
+$ ram -c ./RAM_config-2018-10-21.ini
 
-First load training data, such as the MNIST dataset
-```
->>> data = ram.mnist.dataset.train(directory='/home/art/Documents/data/mnist/raw', num_samples=10000)
-```
+...
 
-Then load a configuration, using the `config.ini` parser.
-```
->>> config = ram.parse_config('./RAM_config_2018-10-21.ini')
-```
-
-Lastly instantiate a `Trainer` class, passing the `config` and `data` to it upon initiation, 
-and then execute the `train` method.
- 
-```
->>> trainer = ram.Trainer(config=config, data=data)
->>> trainer.train()
   0%|          | 0/10000 [00:00<?, ?it/s]
 
 config.train.resume is False,
-will save new model and optimizer to checkpoint: /home/art/Documents/repos/coding/L2M/ram_output/checkpoints/ckpt
+will save new model and optimizer to checkpoint: /home/you/data/ram_output/results_20181021/checkpoints/ckpt
 
 Epoch: 1/200 - learning rate: 0.001000
 
@@ -51,3 +41,7 @@ Epoch: 2/200 - learning rate: 0.001000
 ...
 ```
 
+For a detailed explanation of the config file format, please see [here](./doc/config.md)
+
+## CHANGELOG
+To see past changes and work in progress, please check out the [CHANGELOG](./doc/CHANGELOG.md).
