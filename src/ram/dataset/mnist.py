@@ -59,16 +59,15 @@ def check_labels_file_header(filename):
                                                                            f.name))
 
 
-def download(directory, filename):
+def download(directory, filename, url_root, url_file_extension):
     """Download (and unzip) a file from the MNIST dataset if not already done."""
     filepath = os.path.join(directory, filename)
     if tf.gfile.Exists(filepath):
         return filepath
     if not tf.gfile.Exists(directory):
         tf.gfile.MakeDirs(directory)
-    # CVDF mirror of http://yann.lecun.com/exdb/mnist/
-    url = 'https://storage.googleapis.com/cvdf-datasets/mnist/' + filename + '.gz'
     _, zipped_filepath = tempfile.mkstemp(suffix='.gz')
+    url = url_root + filename + url_file_extension
     print('Downloading %s to %s' % (url, zipped_filepath))
     urllib.request.urlretrieve(url, zipped_filepath)
     with gzip.open(zipped_filepath, 'rb') as f_in, \
@@ -176,6 +175,7 @@ def _split_stratified(img, lbl, sample_inds, rng, split_size=0.1, return_both=Fa
 def prep(download_dir, train_size=None, val_size=None, random_seed=None,
          train_images_file='train-images-idx3-ubyte', train_labels_file='train-labels-idx1-ubyte',
          test_images_file='t10k-images-idx3-ubyte', test_labels_file='t10k-labels-idx1-ubyte',
+         url_root='https://storage.googleapis.com/cvdf-datasets/mnist/', url_file_extension='.gz',
          output_dir=None):
     """prepares MNIST dataset:
     downloads files, checks validity of downloaded data, and creates a validation
@@ -204,6 +204,14 @@ def prep(download_dir, train_size=None, val_size=None, random_seed=None,
         Name of file with MNIST test images. Default is 't10k-images-idx3-ubyte'.
     test_labels_file : str
         Name of file with MNIST test labels. Default is 't10k-labels-idx1-ubyte'.
+    url_root : str
+        Url from which files can be downloaded. Used in combination with url_file_extension.
+        Default is 'https://storage.googleapis.com/cvdf-datasets/mnist/' (CVDF mirror of MNIST).
+    url_file_extension : str
+        Extension specifying format in which files are downloaded. Used in combination with
+        url_root. Default is '.gz'.
+        So full url to file for download will be url_root + filename + url_file_extension, e.g.,
+        https://storage.googleapis.com/cvdf-datasets/mnist/train-images-idx3-ubyte.gz
 
     Returns
     -------
@@ -222,8 +230,8 @@ def prep(download_dir, train_size=None, val_size=None, random_seed=None,
         if val_size <= 0 or val_size >= 1.0:
             raise ValueError('val_size must be >0.0 and <1.0')
 
-    train_images_file = download(download_dir, train_images_file)
-    train_labels_file = download(download_dir, train_labels_file)
+    train_images_file = download(download_dir, train_images_file, url_root, url_file_extension)
+    train_labels_file = download(download_dir, train_labels_file, url_root, url_file_extension)
 
     check_image_file_header(train_images_file)
     check_labels_file_header(train_labels_file)
@@ -234,8 +242,8 @@ def prep(download_dir, train_size=None, val_size=None, random_seed=None,
         'sample_inds': np.arange(len(fetch_labels(train_labels_file))),
     }
 
-    test_images_file = download(download_dir, test_images_file)
-    test_labels_file = download(download_dir, test_labels_file)
+    test_images_file = download(download_dir, test_images_file, url_root, url_file_extension)
+    test_labels_file = download(download_dir, test_labels_file, url_root, url_file_extension)
 
     check_image_file_header(test_images_file)
     check_labels_file_header(test_labels_file)
