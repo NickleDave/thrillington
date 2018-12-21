@@ -61,12 +61,14 @@ class Tester:
              num_examples_to_save=9):
         """compute accuracy of trained RAM model on test data set"""
         accs = []
+        sample_inds = []
 
         tic = time.time()
 
         with tqdm(total=test_data.num_samples) as progress_bar:
             batch = 0
-            for img, lbl, sample_inds in test_data.dataset.batch(self.batch_size):
+            for img, lbl, batch_sample_inds in test_data.dataset.batch(self.batch_size):
+                sample_inds.append(batch_sample_inds)
                 batch += 1
 
                 out_t_minus_1 = self.model.reset()
@@ -119,4 +121,4 @@ class Tester:
             pred.dump(os.path.join(test_examples_dir,
                                    f'predictions_epoch_test'))
 
-        return accs
+        return accs, sample_inds
