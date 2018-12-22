@@ -38,6 +38,7 @@ VALID_OPTIONS = {
         'num_examples_to_save',
         'save_loss',
         'save_train_inds',
+        'results_dir_made_by_main'
     ],
 }
 
@@ -114,6 +115,9 @@ class DataConfig(object):
     examples_dir = attr.ib(type=attr.converters.optional(str), default=None)
     loss_dir = attr.ib(type=attr.converters.optional(str), default=None)
     train_inds_dir = attr.ib(type=attr.converters.optional(str), default=None)
+    # below gets added by main script to config file during training so it can be used
+    # when measuring accuracy on test set
+    results_dir_made_by_main = attr.ib(type=attr.converters.optional(str), default=None)
 
 
 @attr.s
