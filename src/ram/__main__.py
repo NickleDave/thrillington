@@ -12,12 +12,21 @@ from datetime import datetime
 import logging
 import importlib
 import importlib.util
+from configparser import ConfigParser
 
 import tensorflow as tf
 
 import ram
 
 tf.enable_eager_execution()
+
+
+def add_option_to_config_file(config_file, section, option, value):
+    config_parser = ConfigParser()
+    config_parser.read(config_file)
+    config_parser[section][option] = value
+    with open(config_file, 'w') as config_file_obj:
+        config_parser.write(config_file_obj)
 
 
 def main():
@@ -41,6 +50,7 @@ def main():
     results_dir = os.path.join(config.data.root_results_dir, results_dirname)
     if not os.path.isdir(results_dir):
         os.makedirs(results_dir)
+    add_option_to_config_file(config_file, 'data', 'results_dir_made_by_main', results_dir)
 
     if config.train.save_log:
         logfile_name = os.path.join(results_dir,
