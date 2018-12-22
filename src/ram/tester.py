@@ -17,7 +17,7 @@ import numpy as np
 from tqdm import tqdm
 import attr
 
-from . import ram
+from ram import ram
 
 LossesTuple = namedtuple('LossesTuple', ['reinforce_loss',
                                          'baseline_loss',
@@ -36,10 +36,11 @@ class Tester:
     """Class for measuring accuracy of trained RAM model on a test data set"""
     def __init__(self,
                  config,
+                 checkpoint_path
                  ):
         """__init__ for Trainer"""
         self.model = ram.RAM(batch_size=config.train.batch_size,
-                        **config.model._asdict())
+                             **attr.asdict(config.model))
 
         self.learning_rate = config.train.learning_rate
         if config.train.optimizer == 'momentum':
@@ -51,17 +52,16 @@ class Tester:
         checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
                                            model=self.model,
                                            optimizer_step=tf.train.get_or_create_global_step())
-        checkpoint_path = config.data.checkpoint_path
         checkpointer.restore(tf.train.latest_checkpoint(checkpoint_path))
 
         self.batch_size = config.train.batch_size
-        self.test_data = test_data
 
     def test(self, test_data, save_examples=False, test_examples_dir='./test_examples/',
              num_examples_to_save=9):
         """compute accuracy of trained RAM model on test data set"""
         accs = []
         sample_inds = []
+        preds = []
 
         tic = time.time()
 
@@ -90,6 +90,7 @@ class Tester:
                 # calculate reward.
                 # Remember that action network output a_t becomes predictions at last time step
                 predicted = tf.argmax(out.a_t, axis=1, output_type=tf.int32)
+                preds.append(predicted)
                 R = tf.equal(predicted, lbl)
                 acc = np.sum(R.numpy()) / R.numpy().shape[-1] * 100
                 accs.append(acc)
@@ -121,4 +122,5 @@ class Tester:
             pred.dump(os.path.join(test_examples_dir,
                                    f'predictions_epoch_test'))
 
-        return accs, sample_inds
+        return accs, preds, sample_inds
+
