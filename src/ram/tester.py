@@ -123,4 +123,3 @@ class Tester:
                                    f'predictions_epoch_test'))
 
         return accs, preds, sample_inds
-
