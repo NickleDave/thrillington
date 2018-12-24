@@ -2,3 +2,5 @@
 .ipynb_checkpoints
 *egg-info
 *__pycache__/
+tests/test_data/mnist/
+tests/test_data/tmp_config.ini
