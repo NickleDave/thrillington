@@ -3,6 +3,7 @@
 clean :
 	rm -rf ./tests/test_data/checkpoints
 	rm -rf ./tests/test_data/mnist
+	rm .tests/test_data/tmp_config.ini
 
 all : data_and_checkpoints
 
