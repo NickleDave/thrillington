@@ -20,7 +20,8 @@ def main():
     config = ram.config.parse_config(tmp_config)
     paths_dict = ram.dataset.mnist.prep(download_dir=config.data.data_dir,
                                         train_size=config.data.train_size,
-                                        val_size=config.data.val_size)
+                                        val_size=config.data.val_size,
+                                        output_dir=config.data.data_dir)
     train_data, val_data = ram.dataset.mnist.get_split(paths_dict, ['train', 'val'])
     trainer = ram.Trainer(config=config, train_data=train_data, val_data=val_data)
     trainer.train()
