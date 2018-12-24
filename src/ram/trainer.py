@@ -167,12 +167,56 @@ class Trainer:
         """save model and optimizer to a checkpoint file"""
         self.checkpointer.save(file_prefix=checkpoint_path)
 
+    def _name_and_create_data_dirs(self, results_dir):
+        data_dirs = {}
+        checkpoint_dir = os.path.join(results_dir, 'checkpoint')
+        self.logger.info(f"Saving checkpoints in {checkpoint_dir}")
+        if not os.path.isdir(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
+        data_dirs['checkpoint_path'] = os.path.join(checkpoint_dir,
+                                                    self.checkpoint_prefix)
+
+        if self.save_examples_every:
+            self.logger.info(f"Will save examples every {self.save_examples_every} epochs")
+            examples_dir = os.path.join(results_dir, 'examples')
+            self.logger.info(f"Saving examples in {examples_dir}")
+            if not os.path.isdir(examples_dir):
+                os.makedirs(examples_dir)
+            data_dirs['examples_dir'] = examples_dir
+        else:
+            self.logger.info("Will not save examples")
+
+        if self.save_loss:
+            loss_dir = os.path.join(results_dir, 'loss')
+            self.logger.info(f"Saving loss in {loss_dir}")
+            if not os.path.isdir(loss_dir):
+                os.makedirs(loss_dir)
+            data_dirs['loss_dir'] = loss_dir
+        else:
+            self.logger.info("Will not save record of loss")
+
+        if self.save_train_inds:
+            self.logger.info("Will save indices of samples from original training set")
+            train_inds_dir = os.path.join(results_dir, 'train_inds')
+            self.logger.info(f"Saving train_indices in {train_inds_dir}")
+            if not os.path.isdir(train_inds_dir):
+                os.makedirs(train_inds_dir)
+            data_dirs['train_inds_dir'] = train_inds_dir
+        else:
+            self.logger.info("Will not save indices of samples from original training set")
+
+        self.data_dirs = data_dirs
+
     def train(self,
-              checkpoint_path=None,
-              results_dir=None):
+              results_dir=None,
+              checkpoint_path=None):
         """main train function"""
         if self.restore:
-            self.logger.info(f'loading model and optimizer from checkpoint: {checkpoint_path}')
+            if checkpoint_path is None:
+                raise ValueError('must specify checkpoint_path when restoring model')
+
+            self.logger.info(f'restoring model and optimizer from checkpoint: {checkpoint_path}')
+            self._name_and_create_data_dirs(results_dir)
             self.model = ram.RAM(batch_size=self.batch_size,
                                  **attr.asdict(self.config.model))
             self.checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
@@ -189,52 +233,15 @@ class Trainer:
                 if not os.path.isdir(replicate_results_dir):
                     os.makedirs(replicate_results_dir)
 
-                data_dirs_this_replicate = {}
-                checkpoint_dir = os.path.join(replicate_results_dir, 'checkpoint')
-                self.logger.info(f"Saving checkpoints in {checkpoint_dir}")
-                if not os.path.isdir(checkpoint_dir):
-                    os.makedirs(checkpoint_dir)
-                data_dirs_this_replicate['checkpoint_path'] = os.path.join(checkpoint_dir,
-                                                                           self.checkpoint_prefix)
+                self._name_and_create_data_dirs(replicate_results_dir)
+
+                # apply model config
+                self.model = ram.RAM(batch_size=self.batch_size,
+                                     **attr.asdict(self.config.model))
+                self.logger.info(f'Model that will be trained: {self.model}')
                 self.checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
                                                         model=self.model,
                                                         optimizer_step=tf.train.get_or_create_global_step())
-
-                if self.save_examples_every:
-                    self.logger.info(f"Will save examples every {config.data.save_examples_every} epochs")
-                    examples_dir = os.path.join(replicate_results_dir, 'examples')
-                    self.logger.info(f"Saving examples in {examples_dir}")
-                    if not os.path.isdir(examples_dir):
-                        os.makedirs(examples_dir)
-                    data_dirs_this_replicate['examples_dir'] = examples_dir
-                else:
-                    self.logger.info("Will not save examples")
-
-                if self.save_loss:
-                    loss_dir = os.path.join(replicate_results_dir, 'loss')
-                    self.logger.info(f"Saving loss in {loss_dir}")
-                    if not os.path.isdir(loss_dir):
-                        os.makedirs(loss_dir)
-                    data_dirs_this_replicate['loss_dir'] = loss_dir
-                else:
-                    self.logger.info("Will not save record of loss")
-
-                if self.save_train_inds:
-                    self.logger.info("Will save indices of samples from original training set")
-                    train_inds_dir = os.path.join(replicate_results_dir, 'train_inds')
-                    self.logger.info(f"Saving train_indices in {train_inds_dir}")
-                    if not os.path.isdir(train_inds_dir):
-                        os.makedirs(train_inds_dir)
-                    data_dirs_this_replicate['train_inds_dir'] = train_inds_dir
-                else:
-                    self.logger.info("Will not save indices of samples from original training set")
-
-                self.data_dirs = data_dirs_this_replicate
-
-                # apply model config
-                model = ram.RAM(batch_size=self.batch_size,
-                                **attr.asdict(self.config.model))
-                self.logger.info(f'Model that will be trained: {model}')
                 self._train_one_model()
 
     def _train_one_model(self):
