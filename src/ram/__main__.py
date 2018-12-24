@@ -12,6 +12,8 @@ from datetime import datetime
 import logging
 import importlib
 import importlib.util
+from configparser import ConfigParser
+import json
 
 import tensorflow as tf
 
@@ -20,36 +22,34 @@ import ram
 tf.enable_eager_execution()
 
 
+def add_option_to_config_file(config_file, section, option, value):
+    config_parser = ConfigParser()
+    config_parser.read(config_file)
+    config_parser[section][option] = value
+    with open(config_file, 'w') as config_file_obj:
+        config_parser.write(config_file_obj)
+
+
 def main():
     parser = argparse.ArgumentParser(description='main script',
                                      formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument('-c', '--config', type=str,
-                        help='run experiment with configuration defined in config.ini file\n'
-                             '$ ram-cli --config scripts/ram_configs/config_2018-12-17.ini')
+    parser.add_argument('mode', type=str, choices=['train', 'test'],
+                        help="Mode to run models in, either 'train' or 'test' \n"
+                             "$ ram train scripts/ram_configs/config_2018-12-17.ini")
+    parser.add_argument('configfile', type=str,
+                        help='name of config.ini file to use \n'
+                             '$ ram scripts/ram_configs/config_2018-12-17.ini')
 
     # get config first so we can know if we should save log, where to make results directory, etc.
     args = parser.parse_args()
-    config = ram.parse_config(args.config)
+    config = ram.parse_config(args.configfile)
 
     # start logging; instantiate logger through getLogger function
     logger = logging.getLogger(__name__)
     logger.setLevel('INFO')
     logger.addHandler(logging.StreamHandler(sys.stdout))
 
-    timenow = datetime.now().strftime('%y%m%d_%H%M%S')
-    results_dirname = 'RAM_results_' + timenow
-    results_dir = os.path.join(config.data.root_results_dir, results_dirname)
-    if not os.path.isdir(results_dir):
-        os.makedirs(results_dir)
-
-    if config.train.save_log:
-        logfile_name = os.path.join(results_dir,
-                                    'logfile_from_ram_' + timenow + '.log')
-        logger.addHandler(logging.FileHandler(logfile_name))
-        logger.info('Logging results to {}'.format(results_dir))
-        config.train.logfile_name = logfile_name
-
-    logger.info(f'Using config file: {args.config}')
+    logger.info(f'Using config file: {args.configfile}')
 
     try:
         dataset_module = importlib.import_module(name=config.data.module)
@@ -64,74 +64,107 @@ def main():
         dataset_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(dataset_module)
 
-    logger.info(f'\nUsing {config.data.module} module to prepare and load datasets')
-    paths_dict = dataset_module.prep(download_dir=config.data.data_dir,
-                                     train_size=config.data.train_size,
-                                     val_size=config.data.val_size,
-                                     output_dir=config.data.data_dir)
-    logger.info(f'Prepared dataset from {config.data.data_dir}')
-    logger.info(f'train size (None = use all training data): {config.data.train_size}')
-    logger.info(f'val size (None = no validation set): {config.data.val_size}')
-    logger.info(f'saved .npy files in: {config.data.data_dir}')
-    logger.info(f"Full paths to files returned by dataset.mnist.prep:\n{paths_dict}")
-    if config.data.val_size:
-        logger.info(f'Will use validation data set')
-        train_data, val_data = dataset_module.get_split(paths_dict, setname=['train', 'val'])
-    else:
-        train_data = dataset_module.get_split(paths_dict, setname=['train'])
-        val_data = None
+    if args.mode == 'train':
+        logger.info("\nRunning main in 'train' mode, will train new models.")
+        timenow = datetime.now().strftime('%y%m%d_%H%M%S')
+        results_dirname = 'RAM_results_' + timenow
+        results_dir = os.path.join(config.data.root_results_dir, results_dirname)
+        if not os.path.isdir(results_dir):
+            os.makedirs(results_dir)
+        add_option_to_config_file(args.configfile, 'data', 'results_dir_made_by_main', results_dir)
 
-    for replicate in range(1, config.train.replicates + 1):
-        logger.info(f"Starting replicate {replicate}\n")
-        config.train.current_replicate = replicate
+        if config.train.save_log:
+            logfile_name = os.path.join(results_dir,
+                                        'logfile_from_ram_' + timenow + '.log')
+            logger.addHandler(logging.FileHandler(logfile_name))
+            logger.info('Logging results to {}'.format(results_dir))
+            config.train.logfile_name = logfile_name
 
-        replicate_results_dir = os.path.join(results_dir, f'replicate_{replicate}')
-        logger.info(f"Saving results in {replicate_results_dir}")
-        if not os.path.isdir(replicate_results_dir):
-            os.makedirs(replicate_results_dir)
+        logger.info(f'\nUsing {config.data.module} module to prepare and load datasets')
+        paths_dict = dataset_module.prep(download_dir=config.data.data_dir,
+                                         train_size=config.data.train_size,
+                                         val_size=config.data.val_size,
+                                         output_dir=config.data.data_dir)
+        logger.info(f'Prepared dataset from {config.data.data_dir}')
+        paths_dict_fname = os.path.join(results_dir, 'paths_dict.json')
+        with open(paths_dict_fname, 'w') as paths_dict_json:
+            json.dump(paths_dict, paths_dict_json)
+        logger.info('Saved paths to files prepared for dataset in {paths_dict_fname}')
 
-        checkpoint_dir = os.path.join(replicate_results_dir, 'checkpoint')
-        logger.info(f"Saving checkpoints in {checkpoint_dir}")
-        if not os.path.isdir(checkpoint_dir):
-            os.makedirs(checkpoint_dir)
-        config.data.checkpoint_dir = checkpoint_dir
-
-        if hasattr(config.data, 'save_examples_every'):
-            logger.info(f"Will save examples every {config.data.save_examples_every} epochs")
-            examples_dir = os.path.join(replicate_results_dir, 'examples')
-            logger.info(f"Saving examples in {examples_dir}")
-            if not os.path.isdir(examples_dir):
-                os.makedirs(examples_dir)
-            config.data.examples_dir = examples_dir
+        logger.info(f'train size (None = use all training data): {config.data.train_size}')
+        logger.info(f'val size (None = no validation set): {config.data.val_size}')
+        logger.info(f'saved .npy files in: {config.data.data_dir}')
+        logger.info(f"Full paths to files returned by dataset.mnist.prep:\n{paths_dict}")
+        if config.data.val_size:
+            logger.info(f'Will use validation data set')
+            train_data, val_data = dataset_module.get_split(paths_dict, setname=['train', 'val'])
         else:
-            logger.info("Will not save examples")
+            train_data = dataset_module.get_split(paths_dict, setname=['train'])
+            val_data = None
 
-        if config.data.save_loss:
-            loss_dir = os.path.join(replicate_results_dir, 'loss')
-            logger.info(f"Saving loss in {loss_dir}")
-            if not os.path.isdir(loss_dir):
-                os.makedirs(loss_dir)
-            config.data.loss_dir = loss_dir
-        else:
-            logger.info("Will not save record of loss")
+        for replicate in range(1, config.train.replicates + 1):
+            logger.info(f"Starting replicate {replicate}\n")
+            config.train.current_replicate = replicate
 
-        if config.data.save_train_inds:
-            logger.info("Will save indices of samples from original training set")
-            train_inds_dir = os.path.join(replicate_results_dir, 'train_inds')
-            logger.info(f"Saving train_indices in {train_inds_dir}")
-            if not os.path.isdir(train_inds_dir):
-                os.makedirs(train_inds_dir)
-            config.data.train_inds_dir = train_inds_dir
-        else:
-            logger.info("Will not save indices of samples from original training set")
+            replicate_results_dir = os.path.join(results_dir, f'replicate_{replicate}')
+            logger.info(f"Saving results in {replicate_results_dir}")
+            if not os.path.isdir(replicate_results_dir):
+                os.makedirs(replicate_results_dir)
 
-        logger.info("\nStarting training.")
-        trainer = ram.Trainer(config=config,
-                              train_data=train_data,
-                              val_data=val_data)
-        trainer.train()
+            checkpoint_dir = os.path.join(replicate_results_dir, 'checkpoint')
+            logger.info(f"Saving checkpoints in {checkpoint_dir}")
+            if not os.path.isdir(checkpoint_dir):
+                os.makedirs(checkpoint_dir)
+            config.data.checkpoint_dir = checkpoint_dir
 
-    logger.info("\nFinished run.")
+            if hasattr(config.data, 'save_examples_every'):
+                logger.info(f"Will save examples every {config.data.save_examples_every} epochs")
+                examples_dir = os.path.join(replicate_results_dir, 'examples')
+                logger.info(f"Saving examples in {examples_dir}")
+                if not os.path.isdir(examples_dir):
+                    os.makedirs(examples_dir)
+                config.data.examples_dir = examples_dir
+            else:
+                logger.info("Will not save examples")
+
+            if config.data.save_loss:
+                loss_dir = os.path.join(replicate_results_dir, 'loss')
+                logger.info(f"Saving loss in {loss_dir}")
+                if not os.path.isdir(loss_dir):
+                    os.makedirs(loss_dir)
+                config.data.loss_dir = loss_dir
+            else:
+                logger.info("Will not save record of loss")
+
+            if config.data.save_train_inds:
+                logger.info("Will save indices of samples from original training set")
+                train_inds_dir = os.path.join(replicate_results_dir, 'train_inds')
+                logger.info(f"Saving train_indices in {train_inds_dir}")
+                if not os.path.isdir(train_inds_dir):
+                    os.makedirs(train_inds_dir)
+                config.data.train_inds_dir = train_inds_dir
+            else:
+                logger.info("Will not save indices of samples from original training set")
+
+            logger.info("\nStarting training.")
+            trainer = ram.Trainer(config=config,
+                                  train_data=train_data,
+                                  val_data=val_data)
+            trainer.train()
+
+    elif args.mode == 'test':
+        logger.info("\nRunning main in 'test' mode, will test accuracy of previously trained models\n"
+                    "on the test data set.")
+        results_dir = config.data.results_dir_made_by_main
+        paths_dict_fname = os.path.join(results_dir, 'paths_dict.json')
+        with open(paths_dict_fname) as paths_dict_json:
+            paths_dict = json.load(paths_dict_json)
+        test_data = dataset_module.get_split(paths_dict, setname=['test'])
+        checkpoint_dirs = glob(os.path.join(results_dir, '*epoch*', '*checkpoint*/'))
+        for checkpoint_dir in checkpoint_dirs:
+            tester = ram.tester.Tester(config=config, checkpoint_path=checkpoint_dir)
+
+    logger.info("\nFinished running.")
 
 
 if __name__ == '__main__':
