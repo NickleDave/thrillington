@@ -4,10 +4,7 @@ clean :
 	rm -rf ./tests/test_data/checkpoints
 	rm -rf ./tests/test_data/mnist
 
-all : models
+all : data_and_checkpoints
 
-checkpoints : data
-	python ./tests/test_data/remake_checkpoints.py
-
-data :
-python ./tests/test_data/feature_files/remake_data.py
+data_and_checkpoints :
+	python ./tests/test_data/remake_data_and_checkpoints.py
