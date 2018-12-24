@@ -102,55 +102,12 @@ def main():
             train_data = dataset_module.get_split(paths_dict, setname=['train'])
             val_data = None
 
-        for replicate in range(1, config.train.replicates + 1):
-            logger.info(f"Starting replicate {replicate}\n")
-            config.train.current_replicate = replicate
-
-            replicate_results_dir = os.path.join(results_dir, f'replicate_{replicate}')
-            logger.info(f"Saving results in {replicate_results_dir}")
-            if not os.path.isdir(replicate_results_dir):
-                os.makedirs(replicate_results_dir)
-
-            checkpoint_dir = os.path.join(replicate_results_dir, 'checkpoint')
-            logger.info(f"Saving checkpoints in {checkpoint_dir}")
-            if not os.path.isdir(checkpoint_dir):
-                os.makedirs(checkpoint_dir)
-            config.data.checkpoint_dir = checkpoint_dir
-
-            if hasattr(config.data, 'save_examples_every'):
-                logger.info(f"Will save examples every {config.data.save_examples_every} epochs")
-                examples_dir = os.path.join(replicate_results_dir, 'examples')
-                logger.info(f"Saving examples in {examples_dir}")
-                if not os.path.isdir(examples_dir):
-                    os.makedirs(examples_dir)
-                config.data.examples_dir = examples_dir
-            else:
-                logger.info("Will not save examples")
-
-            if config.data.save_loss:
-                loss_dir = os.path.join(replicate_results_dir, 'loss')
-                logger.info(f"Saving loss in {loss_dir}")
-                if not os.path.isdir(loss_dir):
-                    os.makedirs(loss_dir)
-                config.data.loss_dir = loss_dir
-            else:
-                logger.info("Will not save record of loss")
-
-            if config.data.save_train_inds:
-                logger.info("Will save indices of samples from original training set")
-                train_inds_dir = os.path.join(replicate_results_dir, 'train_inds')
-                logger.info(f"Saving train_indices in {train_inds_dir}")
-                if not os.path.isdir(train_inds_dir):
-                    os.makedirs(train_inds_dir)
-                config.data.train_inds_dir = train_inds_dir
-            else:
-                logger.info("Will not save indices of samples from original training set")
-
             logger.info("\nStarting training.")
-            trainer = ram.Trainer(config=config,
-                                  train_data=train_data,
-                                  val_data=val_data)
-            trainer.train()
+
+        trainer = ram.Trainer.from_config(config=config,
+                                          train_data=train_data,
+                                          val_data=val_data)
+        trainer.train(results_dir=results_dir)
 
     elif args.mode == 'test':
         logger.info("\nRunning main in 'test' mode, will test accuracy of previously trained models\n"
