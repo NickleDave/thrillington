@@ -76,12 +76,8 @@ class Trainer:
                              f'This will cause an error when training network;'
                              f'please change either so that data.num_samples % config.train.batch_size == 0:')
 
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger('ram-cli.trainer')
         self.logger.setLevel('INFO')
-        self.logger.addHandler(logging.StreamHandler(sys.stdout))
-
-        if save_log:
-            self.logger.addHandler(logging.FileHandler(config.train.logfile_name))
 
         self.config = config
         self.logger.info(f'Trainer config: {config}')
