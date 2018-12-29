@@ -412,21 +412,18 @@ class Trainer:
 
         if save_examples:
             locs = np.asarray(locs)
-            locs.dump(os.path.join(self.data_dirs['examples_dir'],
-                                   f'locations_epoch_{current_epoch}'))
             fixations = np.asarray(fixations)
-            fixations.dump(os.path.join(self.data_dirs['examples_dir'],
-                                        f'fixations_epoch_{current_epoch}'))
             glimpses = out.rho.numpy()[:self.num_examples_to_save]
-            glimpses.dump(os.path.join(self.data_dirs['examples_dir'],
-                                       f'glimpses_epoch_{current_epoch}'))
             img = img.numpy()[:self.num_examples_to_save]
-            img.dump(os.path.join(self.data_dirs['examples_dir'],
-                                  f'images_epoch_{current_epoch}'))
-
             pred = predicted.numpy()[:self.num_examples_to_save]
-            pred.dump(os.path.join(self.data_dirs['examples_dir'],
-                                   f'predictions_epoch_{current_epoch}'))
+
+            for arr, stem in zip(
+                    (locs, fixations, glimpses, img, pred),
+                    ('locations', 'fixations', 'glimpses', 'images', 'predictions')
+            ):
+                file = os.path.join(self.data_dirs['examples_dir'],
+                                    f'{stem}_epoch_{current_epoch}')
+                np.save(file=file, arr=arr)
 
         if self.save_train_inds:
             train_inds = np.asarray(train_inds)
