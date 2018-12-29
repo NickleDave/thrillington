@@ -30,26 +30,42 @@ def add_option_to_config_file(config_file, section, option, value):
         config_parser.write(config_file_obj)
 
 
-def main():
-    parser = argparse.ArgumentParser(description='main script',
-                                     formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument('mode', type=str, choices=['train', 'test'],
-                        help="Mode to run models in, either 'train' or 'test' \n"
-                             "$ ram train scripts/ram_configs/config_2018-12-17.ini")
-    parser.add_argument('configfile', type=str,
-                        help='name of config.ini file to use \n'
-                             '$ ram scripts/ram_configs/config_2018-12-17.ini')
+def cli(command, configfile):
+    """command-line interface
+    Called by main() when user runs ram from the command-line by typing 'ram'
 
+    Parameters
+    ----------
+    command : str
+        Command to follow. One of {'train', 'test'}
+            Train : train models using configuration defined in config file.
+            Test : test accuracy of trained models using configuration defined in configfile.
+
+    configfile : str
+        Path to a `config.ini` file that defines the configuration.
+
+    Returns
+    -------
+    None
+
+    Examples
+    --------
+    >>> cli(command='train', config='./configs/quick_run_config.ini')
+
+    Notes
+    -----
+    This function is not really meant to be run by the user, but has its own arguments
+    to make it easier to test (instead of throwing everything into one 'main' function)
+    """
     # get config first so we can know if we should save log, where to make results directory, etc.
-    args = parser.parse_args()
-    config = ram.parse_config(args.configfile)
+    config = ram.parse_config(configfile)
 
     # start logging; instantiate logger through getLogger function
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger('ram-cli')
     logger.setLevel('INFO')
     logger.addHandler(logging.StreamHandler(sys.stdout))
 
-    logger.info(f'Using config file: {args.configfile}')
+    logger.info(f'Using config file: {configfile}')
 
     try:
         dataset_module = importlib.import_module(name=config.data.module)
@@ -64,14 +80,14 @@ def main():
         dataset_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(dataset_module)
 
-    if args.mode == 'train':
+    if command == 'train':
         logger.info("\nRunning main in 'train' mode, will train new models.")
         timenow = datetime.now().strftime('%y%m%d_%H%M%S')
         results_dirname = 'RAM_results_' + timenow
         results_dir = os.path.join(config.data.root_results_dir, results_dirname)
         if not os.path.isdir(results_dir):
             os.makedirs(results_dir)
-        add_option_to_config_file(args.configfile, 'data', 'results_dir_made_by_main', results_dir)
+        add_option_to_config_file(configfile, 'data', 'results_dir_made_by_main', results_dir)
 
         if config.train.save_log:
             logfile_name = os.path.join(results_dir,
@@ -109,7 +125,7 @@ def main():
                                           val_data=val_data)
         trainer.train(results_dir=results_dir)
 
-    elif args.mode == 'test':
+    elif command == 'test':
         logger.info("\nRunning main in 'test' mode, will test accuracy of previously trained models\n"
                     "on the test data set.")
         results_dir = config.data.results_dir_made_by_main
@@ -122,6 +138,25 @@ def main():
             tester = ram.tester.Tester(config=config, checkpoint_path=checkpoint_dir)
 
     logger.info("\nFinished running.")
+
+
+def get_parser():
+    parser = argparse.ArgumentParser(description='main script',
+                                     formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('command', type=str, choices=['train', 'test'],
+                        help="Command to run, either 'train' or 'test' \n"
+                             "$ ram train scripts/ram_configs/config_2018-12-17.ini")
+    parser.add_argument('configfile', type=str,
+                        help='name of config.ini file to use \n'
+                             '$ ram train scripts/ram_configs/config_2018-12-17.ini')
+    return parser
+
+
+def main():
+    parser = get_parser()
+    args = parser.parse_args()
+    cli(command=args.command,
+        configfile=args.configfile)
 
 
 if __name__ == '__main__':
