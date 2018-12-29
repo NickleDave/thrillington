@@ -204,9 +204,23 @@ class Trainer:
         self.data_dirs = data_dirs
 
     def train(self,
-              results_dir=None,
+              results_dir,
               checkpoint_path=None):
-        """main train function"""
+        """main train function
+
+        Parameters
+        ----------
+        results_dir : str
+            Path to directory where results are saved. If training a new model,
+            new sub-directories will be created in results_dir.
+        checkpoint_path : str
+            Path to where checkpoints are saved. Only used when restoring models
+            to train from a previous checkpoint. Default is None.
+
+        Returns
+        -------
+        None
+        """
         if self.restore:
             if checkpoint_path is None:
                 raise ValueError('must specify checkpoint_path when restoring model')
