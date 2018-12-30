@@ -30,26 +30,42 @@ def add_option_to_config_file(config_file, section, option, value):
         config_parser.write(config_file_obj)
 
 
-def main():
-    parser = argparse.ArgumentParser(description='main script',
-                                     formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument('mode', type=str, choices=['train', 'test'],
-                        help="Mode to run models in, either 'train' or 'test' \n"
-                             "$ ram train scripts/ram_configs/config_2018-12-17.ini")
-    parser.add_argument('configfile', type=str,
-                        help='name of config.ini file to use \n'
-                             '$ ram scripts/ram_configs/config_2018-12-17.ini')
+def cli(command, configfile):
+    """command-line interface
+    Called by main() when user runs ram from the command-line by typing 'ram'
 
+    Parameters
+    ----------
+    command : str
+        Command to follow. One of {'train', 'test'}
+            Train : train models using configuration defined in config file.
+            Test : test accuracy of trained models using configuration defined in configfile.
+
+    configfile : str
+        Path to a `config.ini` file that defines the configuration.
+
+    Returns
+    -------
+    None
+
+    Examples
+    --------
+    >>> cli(command='train', config='./configs/quick_run_config.ini')
+
+    Notes
+    -----
+    This function is not really meant to be run by the user, but has its own arguments
+    to make it easier to test (instead of throwing everything into one 'main' function)
+    """
     # get config first so we can know if we should save log, where to make results directory, etc.
-    args = parser.parse_args()
-    config = ram.parse_config(args.configfile)
+    config = ram.parse_config(configfile)
 
     # start logging; instantiate logger through getLogger function
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger('ram-cli')
     logger.setLevel('INFO')
     logger.addHandler(logging.StreamHandler(sys.stdout))
 
-    logger.info(f'Using config file: {args.configfile}')
+    logger.info(f'Using config file: {configfile}')
 
     try:
         dataset_module = importlib.import_module(name=config.data.module)
@@ -64,14 +80,14 @@ def main():
         dataset_module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(dataset_module)
 
-    if args.mode == 'train':
+    if command == 'train':
         logger.info("\nRunning main in 'train' mode, will train new models.")
         timenow = datetime.now().strftime('%y%m%d_%H%M%S')
         results_dirname = 'RAM_results_' + timenow
         results_dir = os.path.join(config.data.root_results_dir, results_dirname)
         if not os.path.isdir(results_dir):
             os.makedirs(results_dir)
-        add_option_to_config_file(args.configfile, 'data', 'results_dir_made_by_main', results_dir)
+        add_option_to_config_file(configfile, 'data', 'results_dir_made_by_main', results_dir)
 
         if config.train.save_log:
             logfile_name = os.path.join(results_dir,
@@ -102,57 +118,15 @@ def main():
             train_data = dataset_module.get_split(paths_dict, setname=['train'])
             val_data = None
 
-        for replicate in range(1, config.train.replicates + 1):
-            logger.info(f"Starting replicate {replicate}\n")
-            config.train.current_replicate = replicate
-
-            replicate_results_dir = os.path.join(results_dir, f'replicate_{replicate}')
-            logger.info(f"Saving results in {replicate_results_dir}")
-            if not os.path.isdir(replicate_results_dir):
-                os.makedirs(replicate_results_dir)
-
-            checkpoint_dir = os.path.join(replicate_results_dir, 'checkpoint')
-            logger.info(f"Saving checkpoints in {checkpoint_dir}")
-            if not os.path.isdir(checkpoint_dir):
-                os.makedirs(checkpoint_dir)
-            config.data.checkpoint_dir = checkpoint_dir
-
-            if hasattr(config.data, 'save_examples_every'):
-                logger.info(f"Will save examples every {config.data.save_examples_every} epochs")
-                examples_dir = os.path.join(replicate_results_dir, 'examples')
-                logger.info(f"Saving examples in {examples_dir}")
-                if not os.path.isdir(examples_dir):
-                    os.makedirs(examples_dir)
-                config.data.examples_dir = examples_dir
-            else:
-                logger.info("Will not save examples")
-
-            if config.data.save_loss:
-                loss_dir = os.path.join(replicate_results_dir, 'loss')
-                logger.info(f"Saving loss in {loss_dir}")
-                if not os.path.isdir(loss_dir):
-                    os.makedirs(loss_dir)
-                config.data.loss_dir = loss_dir
-            else:
-                logger.info("Will not save record of loss")
-
-            if config.data.save_train_inds:
-                logger.info("Will save indices of samples from original training set")
-                train_inds_dir = os.path.join(replicate_results_dir, 'train_inds')
-                logger.info(f"Saving train_indices in {train_inds_dir}")
-                if not os.path.isdir(train_inds_dir):
-                    os.makedirs(train_inds_dir)
-                config.data.train_inds_dir = train_inds_dir
-            else:
-                logger.info("Will not save indices of samples from original training set")
-
             logger.info("\nStarting training.")
-            trainer = ram.Trainer(config=config,
-                                  train_data=train_data,
-                                  val_data=val_data)
-            trainer.train()
 
-    elif args.mode == 'test':
+        trainer = ram.Trainer.from_config(config=config,
+                                          train_data=train_data,
+                                          val_data=val_data,
+                                          logger=logger)
+        trainer.train(results_dir=results_dir)
+
+    elif command == 'test':
         logger.info("\nRunning main in 'test' mode, will test accuracy of previously trained models\n"
                     "on the test data set.")
         results_dir = config.data.results_dir_made_by_main
@@ -165,6 +139,25 @@ def main():
             tester = ram.tester.Tester(config=config, checkpoint_path=checkpoint_dir)
 
     logger.info("\nFinished running.")
+
+
+def get_parser():
+    parser = argparse.ArgumentParser(description='main script',
+                                     formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument('command', type=str, choices=['train', 'test'],
+                        help="Command to run, either 'train' or 'test' \n"
+                             "$ ram train scripts/ram_configs/config_2018-12-17.ini")
+    parser.add_argument('configfile', type=str,
+                        help='name of config.ini file to use \n'
+                             '$ ram train scripts/ram_configs/config_2018-12-17.ini')
+    return parser
+
+
+def main():
+    parser = get_parser()
+    args = parser.parse_args()
+    cli(command=args.command,
+        configfile=args.configfile)
 
 
 if __name__ == '__main__':

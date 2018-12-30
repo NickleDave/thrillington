@@ -13,6 +13,7 @@ import sys
 import time
 from collections import namedtuple
 import logging
+from datetime import datetime
 
 import tensorflow as tf
 import numpy as np
@@ -38,8 +39,22 @@ class Trainer:
     """Trainer object for training the RAM model"""
     def __init__(self,
                  config,
+                 batch_size,
+                 learning_rate,
+                 epochs,
+                 optimizer,
                  train_data,
-                 val_data=None
+                 val_data=None,
+                 shuffle_each_epoch=True,
+                 replicates=1,
+                 restore=False,
+                 checkpoint_prefix='ckpt',
+                 save_log=False,
+                 save_examples_every=None,
+                 num_examples_to_save=None,
+                 save_loss=False,
+                 save_train_inds=False,
+                 logger=None
                  ):
         """__init__ for Trainer
 
@@ -57,103 +72,223 @@ class Trainer:
         val_data : ram.dataset.Dataset
             Validation data. Default is None (in which case a validation score is not computed).
         """
-        if train_data.num_samples % config.train.batch_size != 0:
+        if train_data.num_samples % batch_size != 0:
             raise ValueError(f'Number of training samples, {train_data.num_samples}, '
                              f'is not evenly divisible by batch size, {config.train.batch_size}.\n'
                              f'This will cause an error when training network;'
                              f'please change either so that data.num_samples % config.train.batch_size == 0:')
 
-        self.logger = logging.getLogger(__name__)
-        self.logger.setLevel('INFO')
-        self.logger.addHandler(logging.StreamHandler(sys.stdout))
-
-        if config.train.save_log:
-            self.logger.addHandler(logging.FileHandler(config.train.logfile_name))
+        self.save_log = save_log  # if True, will create logfile in train method, using that method's result_dir arg
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger(__name__)
+            self.logger.setLevel('INFO')
+            self.logger.addHandler(logging.StreamHandler(sys.stdout))
 
         self.config = config
         self.logger.info(f'Trainer config: {config}')
 
-        # apply model config
-        self.model = ram.RAM(batch_size=config.train.batch_size,
-                             **attr.asdict(config.model))
-        self.logger.info(f'Model that will be trained: {self.model}')
-
-        # then unpack train config
         self.train_data = train_data.dataset
         self.logger.info(f'Training data: {self.train_data}')
         self.num_train_samples = train_data.num_samples
+        self.logger.info(f'Number of samples in training data: {self.num_train_samples}')
 
         if val_data:
             self.val_data = val_data.dataset
             self.logger.info(f'Validation data: {self.val_data}')
             self.num_val_samples = val_data.num_samples
+            self.logger.info(f'Number of samples in validation data: {self.num_val_samples}')
         else:
             self.val_data = None
             self.logger.info(f'Validation data: {self.val_data}')
             self.num_val_samples = None
 
-        self.batch_size = config.train.batch_size
-        self.learning_rate = config.train.learning_rate
-        self.epochs = config.train.epochs
-        if config.train.optimizer == 'momentum':
-            self.optimizer = tf.train.MomentumOptimizer(momentum=0.9,
-                                                        learning_rate=self.learning_rate)
-        elif config.train.optimizer == 'sgd':
-            self.optimizer = tf.train.GradientDescentOptimizer(learning_rate=self.learning_rate)
-        self.restore = config.train.restore
+        # hyperparams that will be common across replicates
+        self.batch_size = batch_size
+        self.learning_rate = learning_rate
+        self.epochs = epochs
+        self.optimizer = optimizer
 
-        self.checkpoint_path = os.path.join(config.data.checkpoint_dir,
-                                            config.train.checkpoint_prefix)
-        self.checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
-                                                model=self.model,
-                                                optimizer_step=tf.train.get_or_create_global_step())
-
-        if hasattr(config.data, 'save_examples_every'):
-            self.save_examples_every = config.data.save_examples_every
-            self.examples_dir = config.data.examples_dir
-            self.num_examples_to_save = config.data.num_examples_to_save
-
-        self.save_loss = config.data.save_loss
-        if self.save_loss:
-            self.loss_dir = config.data.loss_dir
-
-        self.shuffle_each_epoch = config.train.shuffle_each_epoch
+        self.shuffle_each_epoch = shuffle_each_epoch
         if self.shuffle_each_epoch:
             self.train_data = self.train_data.shuffle(buffer_size=self.num_train_samples,
                                                       reshuffle_each_iteration=True)
 
-        self.save_train_inds = config.data.save_train_inds
-        if self.save_train_inds:
-            self.train_inds_dir = config.data.train_inds_dir
+        # are we restoring a previous model?
+        self.restore = restore
+        # or are we training for a certain number of replicates?
+        self.replicates = replicates
 
-    def load_checkpoint(self):
+        self.checkpoint_prefix = checkpoint_prefix
+
+        # below get replaced with an object when we start training
+        self.checkpointer = None
+        self.model = None
+
+        # whether or not to save training data:
+        # examples of output from certain epochs; loss;
+        # indices of samples used for training sets
+        self.save_examples_every = save_examples_every
+        self.num_examples_to_save = num_examples_to_save
+        self.save_loss = save_loss
+        self.save_train_inds = save_train_inds
+        self.data_dirs = {}
+
+    @classmethod
+    def from_config(cls, config, train_data, val_data=None, logger=None):
+        if config.train.optimizer == 'momentum':
+            optimizer = tf.train.MomentumOptimizer(momentum=config.train.momentum,
+                                                   learning_rate=config.train.learning_rate)
+        elif config.train.optimizer == 'sgd':
+            optimizer = tf.train.GradientDescentOptimizer(learning_rate=config.train.learning_rate)
+        else:
+            raise ValueError(f'optimizer type not recognized: {config.train.optimizer}')
+
+        return cls(config=config,
+                   batch_size=config.train.batch_size,
+                   learning_rate=config.train.learning_rate,
+                   epochs=config.train.epochs,
+                   optimizer=optimizer,
+                   train_data=train_data,
+                   val_data=val_data,
+                   shuffle_each_epoch=config.train.shuffle_each_epoch,
+                   replicates=config.train.replicates,
+                   restore=config.train.restore,
+                   checkpoint_prefix=config.train.checkpoint_prefix,
+                   save_log=config.train.save_log,
+                   save_examples_every=config.data.save_examples_every,
+                   num_examples_to_save=config.data.num_examples_to_save,
+                   save_loss=config.data.save_loss,
+                   save_train_inds=config.data.save_train_inds,
+                   logger=logger)
+
+    def load_checkpoint(self, checkpoint_path):
         """loads model and optimizer from a checkpoint.
         Called when config.train.restore is True"""
         self.checkpointer.restore(
-            tf.train.latest_checkpoint(self.checkpoint_path))
+            tf.train.latest_checkpoint(checkpoint_path))
 
-    def save_checkpoint(self):
+    def save_checkpoint(self, checkpoint_path):
         """save model and optimizer to a checkpoint file"""
-        self.checkpointer.save(file_prefix=self.checkpoint_path)
+        self.checkpointer.save(file_prefix=checkpoint_path)
 
-    def train(self):
-        """trains RAM model
-        """
-        if self.restore:
-            self.logger.info('config.train.restore is True,\n'
-                             f'loading model and optimizer from checkpoint: {self.checkpoint_path}')
-            self.load_checkpoint()
+    def _name_and_create_data_dirs(self, results_dir):
+        data_dirs = {}
+        checkpoint_dir = os.path.join(results_dir, 'checkpoint')
+        self.logger.info(f"Saving checkpoints in {checkpoint_dir}")
+        if not os.path.isdir(checkpoint_dir):
+            os.makedirs(checkpoint_dir)
+        data_dirs['checkpoint_path'] = os.path.join(checkpoint_dir,
+                                                    self.checkpoint_prefix)
+
+        if self.save_examples_every:
+            self.logger.info(f"Will save examples every {self.save_examples_every} epochs")
+            examples_dir = os.path.join(results_dir, 'examples')
+            self.logger.info(f"Saving examples in {examples_dir}")
+            if not os.path.isdir(examples_dir):
+                os.makedirs(examples_dir)
+            data_dirs['examples_dir'] = examples_dir
         else:
-            self.logger.info('config.train.resume is False,\n'
-                             f'will save new model and optimizer to checkpoint: {self.checkpoint_path}')
+            self.logger.info("Will not save examples")
 
+        if self.save_loss:
+            loss_dir = os.path.join(results_dir, 'loss')
+            self.logger.info(f"Saving loss in {loss_dir}")
+            if not os.path.isdir(loss_dir):
+                os.makedirs(loss_dir)
+            data_dirs['loss_dir'] = loss_dir
+        else:
+            self.logger.info("Will not save record of loss")
+
+        if self.save_train_inds:
+            self.logger.info("Will save indices of samples from original training set")
+            train_inds_dir = os.path.join(results_dir, 'train_inds')
+            self.logger.info(f"Saving train_indices in {train_inds_dir}")
+            if not os.path.isdir(train_inds_dir):
+                os.makedirs(train_inds_dir)
+            data_dirs['train_inds_dir'] = train_inds_dir
+        else:
+            self.logger.info("Will not save indices of samples from original training set")
+
+        self.data_dirs = data_dirs
+
+    def train(self,
+              results_dir,
+              checkpoint_path=None):
+        """main train function
+
+        Parameters
+        ----------
+        results_dir : str
+            Path to directory where results are saved. If training a new model,
+            new sub-directories will be created in results_dir.
+        checkpoint_path : str
+            Path to where checkpoints are saved. Only used when restoring models
+            to train from a previous checkpoint. Default is None.
+
+        Returns
+        -------
+        None
+        """
+        if not os.path.isdir(results_dir):
+            raise NotADirectoryError(f'Directory to save result in not found: {results_dir}')
+
+        if self.save_log:
+            # if we're going to save a log, need to make a log file before we start logging stuff
+            timenow = datetime.now().strftime('%y%m%d_%H%M%S')
+            logfile_name = os.path.join(results_dir,
+                                        'logfile_from_ram_' + timenow + '.log')
+            self.logger.addHandler(logging.FileHandler(logfile_name))
+            self.logger.info('Logging results to {}'.format(results_dir))
+
+        if self.restore:
+            if checkpoint_path is None:
+                raise ValueError('must specify checkpoint_path when restoring model')
+
+            self.logger.info(f'restoring model and optimizer from checkpoint: {checkpoint_path}')
+            self._name_and_create_data_dirs(results_dir)
+            self.model = ram.RAM(batch_size=self.batch_size,
+                                 **attr.asdict(self.config.model))
+            self.checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
+                                                    model=self.model,
+                                                    optimizer_step=tf.train.get_or_create_global_step())
+            self.load_checkpoint(checkpoint_path)
+            self._train_one_model()
+        else:
+            for replicate in range(1, self.replicates + 1):
+                self.logger.info(f"Starting replicate {replicate} of {self.replicates}\n")
+
+                replicate_results_dir = os.path.join(results_dir, f'replicate_{replicate}')
+                self.logger.info(f"Saving results in {replicate_results_dir}")
+                if not os.path.isdir(replicate_results_dir):
+                    os.makedirs(replicate_results_dir)
+
+                self._name_and_create_data_dirs(replicate_results_dir)
+
+                # apply model config
+                self.model = ram.RAM(batch_size=self.batch_size,
+                                     **attr.asdict(self.config.model))
+                self.logger.info(f'Model that will be trained: {self.model}')
+                self.checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
+                                                        model=self.model,
+                                                        optimizer_step=tf.train.get_or_create_global_step())
+                self._train_one_model()
+
+    def _train_one_model(self):
+        """train one RAM model. Gets run once every replicate.
+        """
         for epoch in range(1, self.epochs+1):
             self.logger.info(
                 f'\nEpoch: {epoch}/{self.epochs} - learning rate: {self.learning_rate:.6f}'
             )
 
-            if epoch % self.save_examples_every == 0:
-                save_examples = True
+            # if this is an epoch on which we should save examples
+            if self.save_examples_every:
+                if epoch % self.save_examples_every == 0:
+                    save_examples = True
+                else:
+                    save_examples = False
             else:
                 save_examples = False
 
@@ -168,10 +303,10 @@ class Trainer:
                                  f'mean losses: {mn_loss}')
             else:
                 self.logger.info(f'mean accuracy: {mn_acc}\nmean losses: {mn_loss}')
-            self.save_checkpoint()
+            self.save_checkpoint(checkpoint_path=self.data_dirs['checkpoint_path'])
             if self.save_loss:
                 for loss_name, loss_arr in losses._asdict().items():
-                    loss_filename = os.path.join(self.loss_dir,
+                    loss_filename = os.path.join(self.data_dirs['loss_dir'],
                                                  f'{loss_name}_epoch_{epoch}')
                     np.save(loss_filename, loss_arr)
 
@@ -298,27 +433,25 @@ class Trainer:
 
         if save_examples:
             locs = np.asarray(locs)
-            locs.dump(os.path.join(self.examples_dir,
-                                   f'locations_epoch_{current_epoch}'))
             fixations = np.asarray(fixations)
-            fixations.dump(os.path.join(self.examples_dir,
-                                        f'fixations_epoch_{current_epoch}'))
             glimpses = out.rho.numpy()[:self.num_examples_to_save]
-            glimpses.dump(os.path.join(self.examples_dir,
-                                       f'glimpses_epoch_{current_epoch}'))
             img = img.numpy()[:self.num_examples_to_save]
-            img.dump(os.path.join(self.examples_dir,
-                                  f'images_epoch_{current_epoch}'))
-
             pred = predicted.numpy()[:self.num_examples_to_save]
-            pred.dump(os.path.join(self.examples_dir,
-                                   f'predictions_epoch_{current_epoch}'))
+
+            for arr, stem in zip(
+                    (locs, fixations, glimpses, img, pred),
+                    ('locations', 'fixations', 'glimpses', 'images', 'predictions')
+            ):
+                file = os.path.join(self.data_dirs['examples_dir'],
+                                    f'{stem}_epoch_{current_epoch}')
+                np.save(file=file, arr=arr)
 
         if self.save_train_inds:
             train_inds = np.asarray(train_inds)
             train_inds = np.squeeze(train_inds)
             train_inds_fname = f'train_inds_epoch_{current_epoch}'
-            train_inds_fname = os.path.join(self.train_inds_dir, train_inds_fname)
+            train_inds_fname = os.path.join(self.data_dirs['train_inds_dir'],
+                                            train_inds_fname)
             np.save(train_inds_fname, train_inds)
 
         if self.val_data:

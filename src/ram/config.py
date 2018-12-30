@@ -109,12 +109,6 @@ class DataConfig(object):
     num_examples_to_save = attr.ib(converter=int, default=9)
     save_loss = attr.ib(converter=strtobool, default='False')
     save_train_inds = attr.ib(converter=strtobool, default='False')
-    # dirs below are added by __main__ for each replicate
-    # (assuming e.g. save_examples == True)
-    checkpoint_dir = attr.ib(type=attr.converters.optional(str), default=None)
-    examples_dir = attr.ib(type=attr.converters.optional(str), default=None)
-    loss_dir = attr.ib(type=attr.converters.optional(str), default=None)
-    train_inds_dir = attr.ib(type=attr.converters.optional(str), default=None)
     # below gets added by main script to config file during training so it can be used
     # when measuring accuracy on test set
     results_dir_made_by_main = attr.ib(type=attr.converters.optional(str), default=None)

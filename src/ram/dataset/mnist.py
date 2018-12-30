@@ -362,7 +362,7 @@ def get_split(paths_dict, setname='train'):
 
     Returns
     -------
-    dataset : ram.dataset.Dataset
+    dataset : ram.dataset.Dataset or tuple
         NamedTuple with two fields:
             dataset : tensorflow.data.Dataset
                 images loaded from file names in the split specified
@@ -370,6 +370,7 @@ def get_split(paths_dict, setname='train'):
                 number of samples in dataset
             sample_inds : np.ndarray
                 indices of samples used for dataset
+        If setname is a list, a tuple of datasets will be returned, one for each item in list
 
     Examples
     --------
@@ -390,4 +391,7 @@ def get_split(paths_dict, setname='train'):
                                       labels_file=paths_dict[name]['labels'],
                                       sample_inds_file=paths_dict[name]['sample_inds'])
                              )
-    return tuple(data_obj_list[:])
+    if len(data_obj_list) == 1:
+        return data_obj_list[0]
+    else:
+        return tuple(data_obj_list[:])
