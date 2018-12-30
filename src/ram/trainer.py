@@ -135,7 +135,7 @@ class Trainer:
         self.data_dirs = {}
 
     @classmethod
-    def from_config(cls, config, train_data, val_data=None):
+    def from_config(cls, config, train_data, val_data=None, logger=None):
         if config.train.optimizer == 'momentum':
             optimizer = tf.train.MomentumOptimizer(momentum=config.train.momentum,
                                                    learning_rate=config.train.learning_rate)
@@ -159,7 +159,8 @@ class Trainer:
                    save_examples_every=config.data.save_examples_every,
                    num_examples_to_save=config.data.num_examples_to_save,
                    save_loss=config.data.save_loss,
-                   save_train_inds=config.data.save_train_inds)
+                   save_train_inds=config.data.save_train_inds,
+                   logger=logger)
 
     def load_checkpoint(self, checkpoint_path):
         """loads model and optimizer from a checkpoint.
