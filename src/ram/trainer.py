@@ -85,11 +85,13 @@ class Trainer:
         self.train_data = train_data.dataset
         self.logger.info(f'Training data: {self.train_data}')
         self.num_train_samples = train_data.num_samples
+        self.logger.info(f'Number of samples in training data: {self.num_train_samples}')
 
         if val_data:
             self.val_data = val_data.dataset
             self.logger.info(f'Validation data: {self.val_data}')
             self.num_val_samples = val_data.num_samples
+            self.logger.info(f'Number of samples in validation data: {self.num_val_samples}')
         else:
             self.val_data = None
             self.logger.info(f'Validation data: {self.val_data}')
