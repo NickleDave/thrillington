@@ -53,6 +53,7 @@ class Trainer:
                  num_examples_to_save=None,
                  save_loss=False,
                  save_train_inds=False,
+                 logger=None
                  ):
         """__init__ for Trainer
 
@@ -76,8 +77,13 @@ class Trainer:
                              f'This will cause an error when training network;'
                              f'please change either so that data.num_samples % config.train.batch_size == 0:')
 
-        self.logger = logging.getLogger('ram-cli.trainer')
-        self.logger.setLevel('INFO')
+        self.save_log = save_log  # if True, will create logfile in train method, using that method's result_dir arg
+        if logger:
+            self.logger = logger
+        else:
+            self.logger = logging.getLogger(__name__)
+            self.logger.setLevel('INFO')
+            self.logger.addHandler(logging.StreamHandler(sys.stdout))
 
         self.config = config
         self.logger.info(f'Trainer config: {config}')
