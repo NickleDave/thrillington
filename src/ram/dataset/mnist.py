@@ -390,4 +390,7 @@ def get_split(paths_dict, setname='train'):
                                       labels_file=paths_dict[name]['labels'],
                                       sample_inds_file=paths_dict[name]['sample_inds'])
                              )
-    return tuple(data_obj_list[:])
+    if len(data_obj_list) == 1:
+        return data_obj_list[0]
+    else:
+        return tuple(data_obj_list[:])
