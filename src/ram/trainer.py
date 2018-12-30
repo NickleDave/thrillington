@@ -13,6 +13,7 @@ import sys
 import time
 from collections import namedtuple
 import logging
+from datetime import datetime
 
 import tensorflow as tf
 import numpy as np
@@ -230,6 +231,17 @@ class Trainer:
         -------
         None
         """
+        if not os.path.isdir(results_dir):
+            raise NotADirectoryError(f'Directory to save result in not found: {results_dir}')
+
+        if self.save_log:
+            # if we're going to save a log, need to make a log file before we start logging stuff
+            timenow = datetime.now().strftime('%y%m%d_%H%M%S')
+            logfile_name = os.path.join(results_dir,
+                                        'logfile_from_ram_' + timenow + '.log')
+            self.logger.addHandler(logging.FileHandler(logfile_name))
+            self.logger.info('Logging results to {}'.format(results_dir))
+
         if self.restore:
             if checkpoint_path is None:
                 raise ValueError('must specify checkpoint_path when restoring model')
