@@ -257,7 +257,7 @@ class Trainer:
             self._train_one_model()
         else:
             for replicate in range(1, self.replicates + 1):
-                self.logger.info(f"Starting replicate {replicate}\n")
+                self.logger.info(f"Starting replicate {replicate} of {self.replicates}\n")
 
                 replicate_results_dir = os.path.join(results_dir, f'replicate_{replicate}')
                 self.logger.info(f"Saving results in {replicate_results_dir}")
