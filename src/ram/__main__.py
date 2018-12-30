@@ -122,7 +122,8 @@ def cli(command, configfile):
 
         trainer = ram.Trainer.from_config(config=config,
                                           train_data=train_data,
-                                          val_data=val_data)
+                                          val_data=val_data,
+                                          logger=logger)
         trainer.train(results_dir=results_dir)
 
     elif command == 'test':
