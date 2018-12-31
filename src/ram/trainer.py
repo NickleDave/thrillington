@@ -166,8 +166,12 @@ class Trainer:
     def load_checkpoint(self, checkpoint_path):
         """loads model and optimizer from a checkpoint.
         Called when config.train.restore is True"""
-        self.checkpointer.restore(
-            tf.train.latest_checkpoint(checkpoint_path))
+        latest_checkpoint = tf.train.latest_checkpoint(checkpoint_path)
+        if latest_checkpoint:
+            self.logger.info(f'restoring model from latest checkpoint: {latest_checkpoint}')
+            self.checkpointer.restore(latest_checkpoint)
+        else:
+            raise ValueError(f'no checkpoint found in checkpoint path: {checkpoint_path}')
 
     def save_checkpoint(self, checkpoint_path):
         """save model and optimizer to a checkpoint file"""
