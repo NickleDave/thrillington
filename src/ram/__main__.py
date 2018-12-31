@@ -134,9 +134,8 @@ def cli(command, configfile):
         with open(paths_dict_fname) as paths_dict_json:
             paths_dict = json.load(paths_dict_json)
         test_data = dataset_module.get_split(paths_dict, setname=['test'])
-        checkpoint_dirs = glob(os.path.join(results_dir, '*epoch*', '*checkpoint*/'))
-        for checkpoint_dir in checkpoint_dirs:
-            tester = ram.tester.Tester(config=config, checkpoint_path=checkpoint_dir)
+        tester = ram.Tester.from_config(config=config, test_data=test_data, logger=logger)
+        tester.test(results_dir=results_dir)
 
     logger.info("\nFinished running.")
 
