@@ -94,30 +94,32 @@ class Tester:
         else:
             raise ValueError(f'no checkpoint found in checkpoint path: {checkpoint_path}')
 
-    def test(self, results_dir):
-        self.model = ram.RAM(batch_size=self.batch_size,
-                             **attr.asdict(self.config.model))
-        checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
-                                           model=self.model,
-                                           optimizer_step=tf.train.get_or_create_global_step())
-        checkpointer.restore(tf.train.latest_checkpoint(checkpoint_path))
+    def test(self, results_dir, save_examples=False, num_examples_to_save=None, test_examples_dir=None):
+        """compute accuracy of trained RAM models on test data set"""
         for replicate in range(1, self.replicates + 1):
             self.logger.info(f'replicate {replicate} of {self.replicates}')
+            self.model = ram.RAM(batch_size=self.batch_size,
+                                 **attr.asdict(self.config.model))
+            self.checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
+                                                    model=self.model,
+                                                    optimizer_step=tf.train.get_or_create_global_step())
+            checkpoint_path = os.path.join(results_dir, f'replicate_{replicate}', 'checkpoint')
+            self.load_checkpoint(checkpoint_path)
+            self._test_one_model(save_examples=save_examples,
+                                 num_examples_to_save=num_examples_to_save,
+                                 test_examples_dir=test_examples_dir)
 
-            self._test_one_model()
+    def _test_one_model(self, save_examples, num_examples_to_save, test_examples_dir):
 
-    def _test_one_model(self, test_data, save_examples=False, test_examples_dir='./test_examples/',
-             num_examples_to_save=9):
-        """compute accuracy of trained RAM model on test data set"""
         accs = []
         sample_inds = []
         preds = []
 
         tic = time.time()
 
-        with tqdm(total=test_data.num_samples) as progress_bar:
+        with tqdm(total=self.num_test_samples) as progress_bar:
             batch = 0
-            for img, lbl, batch_sample_inds in test_data.dataset.batch(self.batch_size):
+            for img, lbl, batch_sample_inds in self.test_data.batch(self.batch_size):
                 sample_inds.append(batch_sample_inds)
                 batch += 1
 
