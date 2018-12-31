@@ -16,8 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - tests for MNIST module in datasets
 - a CHANGELOG (this one)
 
+### Changed
+- change argparser to use positional arguments `command` and `config`
+  + before all arguments were "optional" (although the program would crash without them)
 
-## [0.1.0a1] - 2018-06-20
+
+
+## [0.1.0] - 2018-12-01
 ### Added
 - original version, probably closest to the [one from Kevin Zakka](https://github.com/kevinzakka/recurrent-visual-attention)
 - but in Tensorflow (Eager) instead of PyTorch
