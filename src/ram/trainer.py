@@ -235,12 +235,15 @@ class Trainer:
             raise NotADirectoryError(f'Directory to save result in not found: {results_dir}')
 
         if self.save_log:
-            # if we're going to save a log, need to make a log file before we start logging stuff
-            timenow = datetime.now().strftime('%y%m%d_%H%M%S')
-            logfile_name = os.path.join(results_dir,
-                                        'logfile_from_ram_' + timenow + '.log')
-            self.logger.addHandler(logging.FileHandler(logfile_name))
-            self.logger.info('Logging results to {}'.format(results_dir))
+            # if Trainer was called from cli, the logger will already have a FileHandler
+            # but if not, we need to add one
+            if logging.FileHandler not in [type(handler) for handler in self.logger.handlers]:
+                # first need to make a log file to pass to Filehandler __init__
+                timenow = datetime.now().strftime('%y%m%d_%H%M%S')
+                logfile_name = os.path.join(results_dir,
+                                            'logfile_from_ram_' + timenow + '.log')
+                self.logger.addHandler(logging.FileHandler(logfile_name))
+                self.logger.info('Logging results to {}'.format(results_dir))
 
         if self.restore:
             if checkpoint_path is None:
