@@ -105,7 +105,7 @@ def cli(command, configfile):
         paths_dict_fname = os.path.join(results_dir, 'paths_dict.json')
         with open(paths_dict_fname, 'w') as paths_dict_json:
             json.dump(paths_dict, paths_dict_json)
-        logger.info('Saved paths to files prepared for dataset in {paths_dict_fname}')
+        logger.info(f'Saved paths to files prepared for dataset in {paths_dict_fname}')
 
         logger.info(f'train size (None = use all training data): {config.data.train_size}')
         logger.info(f'val size (None = no validation set): {config.data.val_size}')
