@@ -30,6 +30,13 @@ def add_option_to_config_file(config_file, section, option, value):
         config_parser.write(config_file_obj)
 
 
+def add_FileHandlerto_logger(logger, results_dir, command, timenow):
+    logfile_name = os.path.join(results_dir,
+                                f'logfile_from_ram_{command}_{timenow}.log')
+    logger.addHandler(logging.FileHandler(logfile_name))
+    logger.info('Logging results to {}'.format(results_dir))
+
+
 def cli(command, configfile):
     """command-line interface
     Called by main() when user runs ram from the command-line by typing 'ram'
@@ -64,14 +71,6 @@ def cli(command, configfile):
     logger = logging.getLogger('ram-cli')
     logger.setLevel('INFO')
     logger.addHandler(logging.StreamHandler(sys.stdout))
-
-    if config.misc.save_log:
-        logfile_name = os.path.join(results_dir,
-                                    'logfile_from_ram_' + timenow + '.log')
-        logger.addHandler(logging.FileHandler(logfile_name))
-        logger.info('Logging results to {}'.format(results_dir))
-
-    logger.info(f'Using config file: {configfile}')
 
     try:
         dataset_module = importlib.import_module(name=config.data.module)
