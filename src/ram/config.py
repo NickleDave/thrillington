@@ -40,6 +40,11 @@ VALID_OPTIONS = {
         'save_train_inds',
         'results_dir_made_by_main'
     ],
+    'test': [
+        'save_examples',
+        'num_examples_to_save',
+        'test_examples_dir'
+    ]
 }
 
 VALID_SECTIONS = set(VALID_OPTIONS.keys())
@@ -118,6 +123,14 @@ class DataConfig(object):
 
 
 @attr.s
+class TestConfig(object):
+    """class that represents configuration for testing a RAM model"""
+    save_examples = attr.ib(converter=strtobool, default='True')
+    num_examples_to_save = attr.ib(converter=attr.converters.optional(int), default=None)
+    test_examples_dir = attr.ib(converter=attr.converters.optional(str), default=None)
+
+
+@attr.s
 class Config(object):
     """class that represents configuration loaded from config.ini file
 
@@ -130,10 +143,13 @@ class Config(object):
     data : DataConfig
         instance of DataConfig class, represent configuration for data associated
         with model (training, testing, outputs)
+    test : TestConfig
+        instance of TestConfig class, represent configuration for testing model
     """
     data = attr.ib(type=DataConfig)
     model = attr.ib(type=ModelConfig, default=ModelConfig())
     train = attr.ib(type=TrainConfig, default=TrainConfig())
+    test = attr.ib(type=TestConfig, default=TestConfig())
 
 
 def parse_config(config_file):
@@ -186,5 +202,6 @@ def parse_config(config_file):
     model_config = ModelConfig(**config['model'])
     train_config = TrainConfig(**config['train'])
     data_config = DataConfig(**config['data'])
-    config = Config(model=model_config, train=train_config, data=data_config)
+    test_config = TestConfig(**config['test'])
+    config = Config(model=model_config, train=train_config, data=data_config, test=test_config)
     return config
