@@ -11,6 +11,7 @@ import sys
 import time
 from collections import namedtuple
 import logging
+from datetime import datetime
 
 import tensorflow as tf
 import numpy as np
@@ -98,25 +99,45 @@ class Tester:
 
     def test(self, results_dir, save_examples=False, num_examples_to_save=None, test_examples_dir=None):
         """compute accuracy of trained RAM models on test data set"""
+        if not os.path.isdir(results_dir):
+            raise NotADirectoryError(f"Couldn't find directory with results: {results_dir}")
+        timenow = datetime.now().strftime('%y%m%d_%H%M%S')
+        test_results_dir = os.path.join(results_dir, 'test_results_' + timenow)
+        os.makedirs(test_results_dir)
         for replicate in range(1, self.replicates + 1):
+            replicate_path = os.path.join(results_dir, f'replicate_{replicate}')
+            if not os.path.isdir(replicate_path):
+                raise NotADirectoryError(f"Couldn't find directory for replicate: {replicate_path}")
             self.logger.info(f'replicate {replicate} of {self.replicates}')
             self.model = ram.RAM(batch_size=self.batch_size,
                                  **attr.asdict(self.config.model))
             self.checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
                                                     model=self.model,
                                                     optimizer_step=tf.train.get_or_create_global_step())
-            checkpoint_path = os.path.join(results_dir, f'replicate_{replicate}', 'checkpoint')
+            checkpoint_path = os.path.join(replicate_path, 'checkpoint')
+            self.load_checkpoint(checkpoint_path)
 
+            test_results_dir_this_replicate = os.path.join(test_results_dir, f'replicate_{replicate}')
+            os.makedirs(test_results_dir_this_replicate)
             if save_examples and test_examples_dir is None:
                 # if save examples is True but test_examples_dir not specified
                 # (e.g. because called by cli), then make test_examples_dir
-                test_examples_dir = os.path.join(results_dir, f'replicate_{replicate}', 'test_examples_dir')
+                test_examples_dir = os.path.join(test_results_dir_this_replicate, 'examples')
                 os.makedirs(test_examples_dir)
 
-            self.load_checkpoint(checkpoint_path)
-            self._test_one_model(save_examples=save_examples,
-                                 num_examples_to_save=num_examples_to_save,
-                                 test_examples_dir=test_examples_dir)
+            (accs,
+             preds,
+             true_lbl,
+             sample_inds) = self._test_one_model(save_examples=save_examples,
+                                                 num_examples_to_save=num_examples_to_save,
+                                                 test_examples_dir=test_examples_dir)
+
+            for name, arr in zip(['accs', 'preds', 'true_lbl', 'sample_inds'],
+                                 [accs, preds, true_lbl, sample_inds]):
+                fname = os.path.join(test_results_dir_this_replicate, arr + '.py')
+                np.save(fname, arr)
+
+            logger.info(f'mean accuracy on test data set: {np.mean(accs)}')
 
     def _test_one_model(self, save_examples, num_examples_to_save, test_examples_dir):
 
