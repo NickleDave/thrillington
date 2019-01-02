@@ -89,7 +89,7 @@ def cli(command, configfile):
             os.makedirs(results_dir)
         add_option_to_config_file(configfile, 'data', 'results_dir_made_by_main', results_dir)
 
-        if config.train.save_log:
+        if config.misc.save_log:
             logfile_name = os.path.join(results_dir,
                                         'logfile_from_ram_' + timenow + '.log')
             logger.addHandler(logging.FileHandler(logfile_name))
