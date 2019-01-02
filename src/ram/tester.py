@@ -40,10 +40,11 @@ class Tester:
                  learning_rate,
                  optimizer,
                  test_data,
+                 save_log,
                  replicates=1,
-                 logger=None
+                 logger=None,
                  ):
-        """__init__ for Trainer"""
+        """__init__ for Tester"""
         self.config = config
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -81,6 +82,7 @@ class Tester:
                    learning_rate=config.train.learning_rate,
                    optimizer=optimizer,
                    test_data=test_data,
+                   save_log=config.misc.save_log,
                    replicates=config.train.replicates,
                    logger=logger)
 
