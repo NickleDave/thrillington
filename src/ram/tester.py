@@ -123,6 +123,7 @@ class Tester:
         accs = []
         sample_inds = []
         preds = []
+        true_lbl = []
 
         tic = time.time()
 
@@ -155,6 +156,7 @@ class Tester:
                 R = tf.equal(predicted, lbl)
                 acc = np.sum(R.numpy()) / R.numpy().shape[-1] * 100
                 accs.append(acc)
+                true_lbl.append(lbl)
 
                 toc = time.time()
 
@@ -183,4 +185,9 @@ class Tester:
             pred.dump(os.path.join(test_examples_dir,
                                    f'predictions_epoch_test'))
 
-        return accs, preds, sample_inds
+        accs = np.asarray(accs)
+        preds = np.concatenate(preds)
+        true_lbl = np.concatenate(true_lbl)
+        sample_inds = np.concatenate(sample_inds)
+
+        return accs, preds, true_lbl, sample_inds
