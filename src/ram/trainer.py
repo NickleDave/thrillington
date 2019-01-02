@@ -106,9 +106,13 @@ class Trainer:
 
         # hyperparams that will be common across replicates
         self.batch_size = batch_size
+        self.logger.info(f'Batch size will be : {self.batch_size}')
         self.learning_rate = learning_rate
+        self.logger.info(f'Initial learning rate will be : {self.learning_rate}')
         self.epochs = epochs
+        self.logger.info(f'Will train for a maximum of {self.epochs} epochs')
         self.optimizer = optimizer
+        self.logger.info(f'Optimizer : {self.optimizer}')
 
         self.shuffle_each_epoch = shuffle_each_epoch
         if self.shuffle_each_epoch:
