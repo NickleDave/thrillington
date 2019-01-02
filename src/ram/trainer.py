@@ -142,6 +142,11 @@ class Trainer:
                                                    learning_rate=config.train.learning_rate)
         elif config.train.optimizer == 'sgd':
             optimizer = tf.train.GradientDescentOptimizer(learning_rate=config.train.learning_rate)
+        elif config.train.optimizer == 'adam':
+            optimizer = tf.train.AdamOptimizer(learning_rate=config.train.learning_rate,
+                                               beta1=config.train.beta1,
+                                               beta2=config.train.beta2,
+                                               epsilon=config.train.epsilon)
         else:
             raise ValueError(f'optimizer type not recognized: {config.train.optimizer}')
 
