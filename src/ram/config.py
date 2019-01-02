@@ -119,8 +119,6 @@ class TrainConfig(object):
     save_train_inds = attr.ib(converter=strtobool, default='False')
     # user does not specify current replicate, gets changed by main()
     current_replicate = attr.ib(type=int, default=None)
-    # user does not specify logfile name, gets added by main()
-    logfile_name = attr.ib(type=attr.converters.optional(str), default=None)
 
 
 @attr.s
