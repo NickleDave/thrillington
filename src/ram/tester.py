@@ -106,6 +106,13 @@ class Tester:
                                                     model=self.model,
                                                     optimizer_step=tf.train.get_or_create_global_step())
             checkpoint_path = os.path.join(results_dir, f'replicate_{replicate}', 'checkpoint')
+
+            if save_examples and test_examples_dir is None:
+                # if save examples is True but test_examples_dir not specified
+                # (e.g. because called by cli), then make test_examples_dir
+                test_examples_dir = os.path.join(results_dir, f'replicate_{replicate}', 'test_examples_dir')
+                os.makedirs(test_examples_dir)
+
             self.load_checkpoint(checkpoint_path)
             self._test_one_model(save_examples=save_examples,
                                  num_examples_to_save=num_examples_to_save,
