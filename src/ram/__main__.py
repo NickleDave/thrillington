@@ -65,6 +65,12 @@ def cli(command, configfile):
     logger.setLevel('INFO')
     logger.addHandler(logging.StreamHandler(sys.stdout))
 
+    if config.misc.save_log:
+        logfile_name = os.path.join(results_dir,
+                                    'logfile_from_ram_' + timenow + '.log')
+        logger.addHandler(logging.FileHandler(logfile_name))
+        logger.info('Logging results to {}'.format(results_dir))
+
     logger.info(f'Using config file: {configfile}')
 
     try:
@@ -88,13 +94,6 @@ def cli(command, configfile):
         if not os.path.isdir(results_dir):
             os.makedirs(results_dir)
         add_option_to_config_file(configfile, 'data', 'results_dir_made_by_main', results_dir)
-
-        if config.misc.save_log:
-            logfile_name = os.path.join(results_dir,
-                                        'logfile_from_ram_' + timenow + '.log')
-            logger.addHandler(logging.FileHandler(logfile_name))
-            logger.info('Logging results to {}'.format(results_dir))
-            config.train.logfile_name = logfile_name
 
         logger.info(f'\nUsing {config.data.module} module to prepare and load datasets')
         paths_dict = dataset_module.prep(download_dir=config.data.data_dir,
