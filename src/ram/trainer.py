@@ -165,11 +165,11 @@ class Trainer:
                    replicates=config.train.replicates,
                    restore=config.train.restore,
                    checkpoint_prefix=config.train.checkpoint_prefix,
-                   save_log=config.train.save_log,
-                   save_examples_every=config.data.save_examples_every,
-                   num_examples_to_save=config.data.num_examples_to_save,
-                   save_loss=config.data.save_loss,
-                   save_train_inds=config.data.save_train_inds,
+                   save_log=config.misc.save_log,
+                   save_examples_every=config.train.save_examples_every,
+                   num_examples_to_save=config.train.num_examples_to_save,
+                   save_loss=config.train.save_loss,
+                   save_train_inds=config.train.save_train_inds,
                    logger=logger)
 
     def load_checkpoint(self, checkpoint_path):

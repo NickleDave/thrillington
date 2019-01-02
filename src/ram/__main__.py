@@ -30,6 +30,13 @@ def add_option_to_config_file(config_file, section, option, value):
         config_parser.write(config_file_obj)
 
 
+def add_FileHandlerto_logger(logger, results_dir, command, timenow):
+    logfile_name = os.path.join(results_dir,
+                                f'logfile_from_ram_{command}_{timenow}.log')
+    logger.addHandler(logging.FileHandler(logfile_name))
+    logger.info('Logging results to {}'.format(results_dir))
+
+
 def cli(command, configfile):
     """command-line interface
     Called by main() when user runs ram from the command-line by typing 'ram'
@@ -65,8 +72,6 @@ def cli(command, configfile):
     logger.setLevel('INFO')
     logger.addHandler(logging.StreamHandler(sys.stdout))
 
-    logger.info(f'Using config file: {configfile}')
-
     try:
         dataset_module = importlib.import_module(name=config.data.module)
     except ModuleNotFoundError:
@@ -81,7 +86,6 @@ def cli(command, configfile):
         spec.loader.exec_module(dataset_module)
 
     if command == 'train':
-        logger.info("\nRunning main in 'train' mode, will train new models.")
         timenow = datetime.now().strftime('%y%m%d_%H%M%S')
         results_dirname = 'RAM_results_' + timenow
         results_dir = os.path.join(config.data.root_results_dir, results_dirname)
@@ -89,12 +93,11 @@ def cli(command, configfile):
             os.makedirs(results_dir)
         add_option_to_config_file(configfile, 'data', 'results_dir_made_by_main', results_dir)
 
-        if config.train.save_log:
-            logfile_name = os.path.join(results_dir,
-                                        'logfile_from_ram_' + timenow + '.log')
-            logger.addHandler(logging.FileHandler(logfile_name))
-            logger.info('Logging results to {}'.format(results_dir))
-            config.train.logfile_name = logfile_name
+        if config.misc.save_log:
+            add_FileHandlerto_logger(logger=logger, results_dir=results_dir, command=command, timenow=timenow)
+
+        logger.info(f'Used config file: {configfile}')
+        logger.info("\nRunning main in 'train' mode, will train new models.")
 
         logger.info(f'\nUsing {config.data.module} module to prepare and load datasets')
         paths_dict = dataset_module.prep(download_dir=config.data.data_dir,
@@ -105,7 +108,7 @@ def cli(command, configfile):
         paths_dict_fname = os.path.join(results_dir, 'paths_dict.json')
         with open(paths_dict_fname, 'w') as paths_dict_json:
             json.dump(paths_dict, paths_dict_json)
-        logger.info('Saved paths to files prepared for dataset in {paths_dict_fname}')
+        logger.info(f'Saved paths to files prepared for dataset in {paths_dict_fname}')
 
         logger.info(f'train size (None = use all training data): {config.data.train_size}')
         logger.info(f'val size (None = no validation set): {config.data.val_size}')
@@ -127,16 +130,24 @@ def cli(command, configfile):
         trainer.train(results_dir=results_dir)
 
     elif command == 'test':
+        results_dir = config.data.results_dir_made_by_main
+        timenow = datetime.now().strftime('%y%m%d_%H%M%S')
+        if config.misc.save_log:
+            add_FileHandlerto_logger(logger=logger, results_dir=results_dir, command=command, timenow=timenow)
+
+        logger.info(f'Used config file: {configfile}')
+
         logger.info("\nRunning main in 'test' mode, will test accuracy of previously trained models\n"
                     "on the test data set.")
-        results_dir = config.data.results_dir_made_by_main
         paths_dict_fname = os.path.join(results_dir, 'paths_dict.json')
         with open(paths_dict_fname) as paths_dict_json:
             paths_dict = json.load(paths_dict_json)
+        logger.info(f'\nLoading test data from path in {paths_dict_fname}, ')
+        logger.info(f'\nUsing {config.data.module} module to load dataset')
         test_data = dataset_module.get_split(paths_dict, setname=['test'])
-        checkpoint_dirs = glob(os.path.join(results_dir, '*epoch*', '*checkpoint*/'))
-        for checkpoint_dir in checkpoint_dirs:
-            tester = ram.tester.Tester(config=config, checkpoint_path=checkpoint_dir)
+        tester = ram.Tester.from_config(config=config, test_data=test_data, logger=logger)
+        tester.test(results_dir=results_dir, save_examples=config.test.save_examples,
+                    num_examples_to_save=config.test.num_examples_to_save)
 
     logger.info("\nFinished running.")
 

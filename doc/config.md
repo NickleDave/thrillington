@@ -37,48 +37,14 @@ loc_std = 0.1
 - `loc_std` : float
   + standard deviation of distribution from which each glimpse location is drawn
 
-## Train section
-```ini
-[train]
-batch_size = 200
-learning_rate = 1e-3
-epochs = 200
-optimizer = momentum
-momentum = 0.9
-checkpoint_prefix = ckpt
-restore = False
-save_log = True
-```
-- `batch_size` : int
-  + number of samples in each batch fed to the network
-- `learning_rate` : float
-  + learning rate used by optimizer during training
-- `epochs` : int
-  + number of training epochs, i.e. number of times network sees entire training set
-- `optimizer` : str
-  + one of {'momentum', 'sgd'}; type of optimizer used
-- `momentum`: float
-  + if optimizer is 'momentum', the value for 'momentum'
-- `checkpoint_prefix` : str
-  + prefix for checkpoint files
-- `restore` : bool
-  + if True, restore from previous checkpoint. Not used by command-line interface but
-  useful if you want to train your own models with the Trainer class.
-- `save_log` : bool
-  + if True, save logging to a text file.
-
-
 ## Data section
 ```ini
 [data]
 root_results_dir = /home/you/Documents/data/RAM_output
 data_dir = /home/you/Documents/data/mnist/raw
 module = ram.dataset.mnist
+train_size = 0.9
 val_size = 0.1
-save_examples_every = 25
-num_examples_to_save = 9
-save_loss = True
-save_train_inds = True
 ```
 - `root_results_dir` : str
   + name of directory in which a new sub-directory will be created to hold results from run
@@ -102,7 +68,66 @@ save_train_inds = True
   + Amount of training data to use for a validation set
 - `train_size` : float
   + Amount of entire training data set to use as a subset for training
+
+
+## Train section
+```ini
+[train]
+batch_size = 200
+learning_rate = 1e-3
+epochs = 200
+optimizer = momentum
+momentum = 0.9
+checkpoint_prefix = ckpt
+restore = False
+save_log = Truesave_examples_every = 25
+num_examples_to_save = 9
+save_loss = True
+save_train_inds = True
+```
+- `batch_size` : int
+  + number of samples in each batch fed to the network
+- `learning_rate` : float
+  + learning rate used by optimizer during training
+- `epochs` : int
+  + number of training epochs, i.e. number of times network sees entire training set
+- `optimizer` : str
+  + one of {'adam', 'momentum', 'sgd'}; type of optimizer used
+- `momentum`: float
+  + if optimizer is 'momentum', the value for 'momentum'
+- `checkpoint_prefix` : str
+  + prefix for checkpoint files
+- `restore` : bool
+  + if True, restore from previous checkpoint. Not used by command-line interface but
+  useful if you want to train your own models with the Trainer class.
 - `save_examples_every` : int
   + if defined, save examples at an interval of this many epochs. Examples are
   glimpses seen by network, locations of gazes, fixations (locations converted from normalized to
   pixel co-ordinates), and images (from which glimpses were taken)
+- 'num_examples_to_save' : int
+  + number of examples to save, if `save_examples` is `True`
+- 'save_loss' : bool
+  if `True`, save records of loss from every epoch.
+- 'save_train_inds' : bool
+  if `True`, save the indices of the training samples used for each epoch.
+
+## Test section
+```ini
+[test]
+save_examples = True
+num_examples_to_save = 15
+```
+- `save_examples` : bool
+  + if True, save examples. Examples are
+  glimpses seen by network, locations of gazes, fixations (locations converted from normalized to
+  pixel co-ordinates), and images (from which glimpses were taken)
+- 'num_examples_to_save' : int
+  + number of examples to save, if `save_examples` is `True`
+
+## Misc section
+```ini
+[misc]
+save_log = True
+```
+- `save_log` : bool
+  + if True, save logging to a text file.
