@@ -86,13 +86,18 @@ def cli(command, configfile):
         spec.loader.exec_module(dataset_module)
 
     if command == 'train':
-        logger.info("\nRunning main in 'train' mode, will train new models.")
         timenow = datetime.now().strftime('%y%m%d_%H%M%S')
         results_dirname = 'RAM_results_' + timenow
         results_dir = os.path.join(config.data.root_results_dir, results_dirname)
         if not os.path.isdir(results_dir):
             os.makedirs(results_dir)
         add_option_to_config_file(configfile, 'data', 'results_dir_made_by_main', results_dir)
+
+        if config.misc.save_log:
+            add_FileHandlerto_logger(logger=logger, results_dir=results_dir, command=command, timenow=timenow)
+
+        logger.info(f'Used config file: {configfile}')
+        logger.info("\nRunning main in 'train' mode, will train new models.")
 
         logger.info(f'\nUsing {config.data.module} module to prepare and load datasets')
         paths_dict = dataset_module.prep(download_dir=config.data.data_dir,
@@ -125,12 +130,20 @@ def cli(command, configfile):
         trainer.train(results_dir=results_dir)
 
     elif command == 'test':
+        results_dir = config.data.results_dir_made_by_main
+        timenow = datetime.now().strftime('%y%m%d_%H%M%S')
+        if config.misc.save_log:
+            add_FileHandlerto_logger(logger=logger, results_dir=results_dir, command=command, timenow=timenow)
+
+        logger.info(f'Used config file: {configfile}')
+
         logger.info("\nRunning main in 'test' mode, will test accuracy of previously trained models\n"
                     "on the test data set.")
-        results_dir = config.data.results_dir_made_by_main
         paths_dict_fname = os.path.join(results_dir, 'paths_dict.json')
         with open(paths_dict_fname) as paths_dict_json:
             paths_dict = json.load(paths_dict_json)
+        logger.info(f'\nLoading test data from path in {paths_dict_fname}, ')
+        logger.info(f'\nUsing {config.data.module} module to load dataset')
         test_data = dataset_module.get_split(paths_dict, setname=['test'])
         tester = ram.Tester.from_config(config=config, test_data=test_data, logger=logger)
         tester.test(results_dir=results_dir, save_examples=config.test.save_examples,
