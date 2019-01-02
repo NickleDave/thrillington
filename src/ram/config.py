@@ -46,6 +46,7 @@ VALID_OPTIONS = {
     ],
     'misc': [
         'save_log',
+        'random_seed'
     ]
 }
 
@@ -132,6 +133,7 @@ class TestConfig(object):
 class MiscConfig(object):
     """class that represents configuration parameters that do not fit in sections above"""
     save_log = attr.ib(converter=strtobool, default='True')
+    random_seed = attr.ib(converter=int, default=42)
 
 
 @attr.s
