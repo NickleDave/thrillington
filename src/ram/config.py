@@ -43,7 +43,6 @@ VALID_OPTIONS = {
     'test': [
         'save_examples',
         'num_examples_to_save',
-        'test_examples_dir'
     ]
 }
 
@@ -127,7 +126,6 @@ class TestConfig(object):
     """class that represents configuration for testing a RAM model"""
     save_examples = attr.ib(converter=strtobool, default='True')
     num_examples_to_save = attr.ib(converter=attr.converters.optional(int), default=None)
-    test_examples_dir = attr.ib(converter=attr.converters.optional(str), default=None)
 
 
 @attr.s
