@@ -131,3 +131,5 @@ save_log = True
 ```
 - `save_log` : bool
   + if True, save logging to a text file.
+- `random_seed` : int
+  + number used to seed random number generator, to make results reproducible across runs
