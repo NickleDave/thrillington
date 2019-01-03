@@ -133,7 +133,7 @@ class TestConfig(object):
 class MiscConfig(object):
     """class that represents configuration parameters that do not fit in sections above"""
     save_log = attr.ib(converter=strtobool, default='True')
-    random_seed = attr.ib(converter=int, default=42)
+    random_seed = attr.ib(converter=attr.converters.optional(int), default=None)
 
 
 @attr.s
