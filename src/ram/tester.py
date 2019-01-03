@@ -137,7 +137,7 @@ class Tester:
                 fname = os.path.join(test_results_dir_this_replicate, name + '.py')
                 np.save(fname, arr)
 
-            logger.info(f'mean accuracy on test data set: {np.mean(accs)}')
+            self.logger.info(f'mean accuracy on test data set: {np.mean(accs)}')
 
     def _test_one_model(self, save_examples, num_examples_to_save, test_examples_dir):
 
