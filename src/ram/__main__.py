@@ -67,6 +67,8 @@ def cli(command, configfile):
     # get config first so we can know if we should save log, where to make results directory, etc.
     config = ram.parse_config(configfile)
 
+    tf.random.set_random_seed(config.misc.random_seed)
+
     # start logging; instantiate logger through getLogger function
     logger = logging.getLogger('ram-cli')
     logger.setLevel('INFO')
@@ -97,6 +99,8 @@ def cli(command, configfile):
             add_FileHandlerto_logger(logger=logger, results_dir=results_dir, command=command, timenow=timenow)
 
         logger.info(f'Used config file: {configfile}')
+        logger.info(f'Used random seed: {config.misc.random_seed}')
+
         logger.info("\nRunning main in 'train' mode, will train new models.")
 
         logger.info(f'\nUsing {config.data.module} module to prepare and load datasets')
@@ -136,6 +140,7 @@ def cli(command, configfile):
             add_FileHandlerto_logger(logger=logger, results_dir=results_dir, command=command, timenow=timenow)
 
         logger.info(f'Used config file: {configfile}')
+        logger.info(f'Used random seed: {config.misc.random_seed}')
 
         logger.info("\nRunning main in 'test' mode, will test accuracy of previously trained models\n"
                     "on the test data set.")
