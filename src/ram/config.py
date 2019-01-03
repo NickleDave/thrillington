@@ -210,5 +210,6 @@ def parse_config(config_file):
     train_config = TrainConfig(**config['train'])
     data_config = DataConfig(**config['data'])
     test_config = TestConfig(**config['test'])
-    config = Config(model=model_config, train=train_config, data=data_config, test=test_config)
+    misc_config = MiscConfig(**config['misc'])
+    config = Config(model=model_config, train=train_config, data=data_config, test=test_config, misc=misc_config)
     return config
