@@ -340,6 +340,14 @@ class Trainer:
         if self.save_train_inds:
             train_inds = []
 
+        if save_examples:
+            locs = []
+            fixations = []
+            glimpses = []
+            img_to_save = []
+            pred = []
+            num_examples_saved = 0
+
         with tqdm(total=self.num_train_samples) as progress_bar:
             batch = 0
             for img, lbl, batch_train_inds in self.train_data.batch(self.batch_size):
@@ -352,19 +360,24 @@ class Trainer:
                 mus = []
                 log_pis = []
                 baselines = []
-                if save_examples:
-                    locs = []
-                    fixations = []
 
                 with tf.GradientTape(persistent=True) as tape:
+                    if save_examples:
+                        if num_examples_saved < self.num_examples_to_save:
+                            locs_t = []
+                            fixations_t = []
+                            glimpses_t = []
+
                     for t in range(self.model.glimpses):
                         out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
 
                         mus.append(out.mu)
                         baselines.append(out.b_t)
                         if save_examples:
-                            locs.append(out.l_t.numpy()[:self.num_examples_to_save, :])
-                            fixations.append(out.fixations[:self.num_examples_to_save, :])
+                            if num_examples_saved < self.num_examples_to_save:
+                                locs_t.append(out.l_t.numpy())
+                                fixations_t.append(out.fixations)
+                                glimpses_t.append(out.rho.numpy())
                         # determine probability of choosing location l_t, given
                         # distribution parameterized by mu (output of location network)
                         # and the constant standard deviation specified as a parameter.
@@ -437,6 +450,37 @@ class Trainer:
                 losses_action.append(loss_action.numpy())
                 losses_hybrid.append(loss_hybrid.numpy())
 
+                # deal with examples if we are saving them
+                if save_examples:
+                    # note we save the **first** n samples
+                    if num_examples_saved < self.num_examples_to_save:
+                        # stack so axis 0 is sample index, axis 1 is number of glimpses
+                        locs_t = np.stack(locs_t, axis=1)
+                        fixations_t = np.stack(fixations_t, axis=1)
+                        glimpses_t = np.stack(glimpses_t, axis=1)
+
+                        num_samples = locs_t.shape[0]
+
+                        if num_examples_saved + num_samples <= self.num_examples_to_save:
+                            locs.append(locs_t)
+                            fixations.append(fixations_t)
+                            glimpses.append(glimpses_t)
+                            pred.append(predicted)
+                            img_to_save.append(img)
+
+                            num_examples_saved = num_examples_saved + num_samples
+
+                        elif num_examples_saved + num_samples > self.num_examples_to_save:
+                            num_needed = self.num_examples_to_save - num_examples_saved
+
+                            locs.append(locs_t[:num_needed])
+                            fixations.append(fixations_t[:num_needed])
+                            glimpses.append(glimpses_t[:num_needed])
+                            pred.append(predicted[:num_needed])
+                            img_to_save.append(img[:num_needed])
+
+                            num_examples_saved = num_examples_saved + num_needed
+
                 toc = time.time()
 
                 progress_bar.set_description(
@@ -448,16 +492,11 @@ class Trainer:
                 progress_bar.update(self.batch_size)
 
         if save_examples:
-            locs = np.asarray(locs)
-            fixations = np.asarray(fixations)
-            glimpses = out.rho.numpy()[:self.num_examples_to_save]
-            img = img.numpy()[:self.num_examples_to_save]
-            pred = predicted.numpy()[:self.num_examples_to_save]
-
             for arr, stem in zip(
-                    (locs, fixations, glimpses, img, pred),
+                    (locs, fixations, glimpses, img_to_save, pred),
                     ('locations', 'fixations', 'glimpses', 'images', 'predictions')
             ):
+                arr = np.concatenate(arr)
                 file = os.path.join(self.data_dirs['examples_dir'],
                                     f'{stem}_epoch_{current_epoch}')
                 np.save(file=file, arr=arr)
