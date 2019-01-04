@@ -146,6 +146,14 @@ class Tester:
         preds = []
         true_lbl = []
 
+        if save_examples:
+            locs = []
+            fixations = []
+            glimpses = []
+            img_to_save = []
+            pred = []
+            num_examples_saved = 0
+
         tic = time.time()
 
         with tqdm(total=self.num_test_samples) as progress_bar:
@@ -157,15 +165,19 @@ class Tester:
                 out_t_minus_1 = self.model.reset()
 
                 if save_examples:
-                    locs = []
-                    fixations = []
+                    if num_examples_saved < num_examples_to_save:
+                        locs_t = []
+                        fixations_t = []
+                        glimpses_t = []
 
                 for t in range(self.model.glimpses):
                     out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
 
                     if save_examples:
-                        locs.append(out.l_t.numpy()[:num_examples_to_save, :])
-                        fixations.append(out.fixations[:num_examples_to_save, :])
+                        if num_examples_saved < num_examples_to_save:
+                            locs_t.append(out.l_t.numpy())
+                            fixations_t.append(out.fixations)
+                            glimpses_t.append(out.rho.numpy())
 
                     out_t_minus_1 = out
 
@@ -179,6 +191,37 @@ class Tester:
                 accs.append(acc)
                 true_lbl.append(lbl)
 
+                # deal with examples if we are saving them
+                if save_examples:
+                    # note we save the **first** n samples
+                    if num_examples_saved < num_examples_to_save:
+                        # stack so axis 0 is sample index, axis 1 is number of glimpses
+                        locs_t = np.stack(locs_t, axis=1)
+                        fixations_t = np.stack(fixations_t, axis=1)
+                        glimpses_t = np.stack(glimpses_t, axis=1)
+
+                        num_samples = locs_t.shape[0]
+
+                        if num_examples_saved + num_samples <= num_examples_to_save:
+                            locs.append(locs_t)
+                            fixations.append(fixations_t)
+                            glimpses.append(glimpses_t)
+                            pred.append(predicted)
+                            img_to_save.append(img)
+
+                            num_examples_saved = num_examples_saved + num_samples
+
+                        elif num_examples_saved + num_samples > num_examples_to_save:
+                            num_needed = num_examples_to_save - num_examples_saved
+
+                            locs.append(locs_t[:num_needed])
+                            fixations.append(fixations_t[:num_needed])
+                            glimpses.append(glimpses_t[:num_needed])
+                            pred.append(predicted[:num_needed])
+                            img_to_save.append(img[:num_needed])
+
+                            num_examples_saved = num_examples_saved + num_needed
+
                 toc = time.time()
 
                 progress_bar.set_description(
@@ -189,22 +232,14 @@ class Tester:
                 progress_bar.update(self.batch_size)
 
         if save_examples:
-            locs = np.asarray(locs)
-            locs.dump(os.path.join(test_examples_dir,
-                                   f'locations_epoch_test'))
-            fixations = np.asarray(fixations)
-            fixations.dump(os.path.join(test_examples_dir,
-                                        f'fixations_epoch_test'))
-            glimpses = out.rho.numpy()[:num_examples_to_save]
-            glimpses.dump(os.path.join(test_examples_dir,
-                                       f'glimpses_epoch_test'))
-            img = img.numpy()[:num_examples_to_save]
-            img.dump(os.path.join(test_examples_dir,
-                                  f'images_epoch_test'))
-
-            pred = predicted.numpy()[:num_examples_to_save]
-            pred.dump(os.path.join(test_examples_dir,
-                                   f'predictions_epoch_test'))
+            for arr, stem in zip(
+                    (locs, fixations, glimpses, img_to_save, pred),
+                    ('locations', 'fixations', 'glimpses', 'images', 'predictions')
+            ):
+                arr = np.concatenate(arr)
+                file = os.path.join(test_examples_dir,
+                                    f'{stem}_epoch_test')
+                np.save(file=file, arr=arr)
 
         accs = np.asarray(accs)
         preds = np.concatenate(preds)
