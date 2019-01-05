@@ -406,7 +406,9 @@ class Trainer:
                     # repeat column vector n times where n = glimpses
                     # calculate reward.
                     # Remember that action network output a_t becomes predictions at last time step
-                    predicted = tf.argmax(out.a_t, axis=1, output_type=tf.int32)
+                    predicted = tf.argmax(
+                        tf.nn.softmax(out.a_t),
+                        axis=1, output_type=tf.int32)
                     R = tf.equal(predicted, lbl)
                     acc = np.sum(R.numpy()) / R.numpy().shape[-1] * 100
                     accs.append(acc)
@@ -520,7 +522,9 @@ class Trainer:
                         out_t_minus_1 = out
 
                     # Remember that action network output a_t becomes predictions at last time step
-                    predicted = tf.argmax(out.a_t, axis=1, output_type=tf.int32)
+                    predicted = tf.argmax(
+                        tf.nn.softmax(out.a_t),
+                        axis=1, output_type=tf.int32)
                     val_acc = tf.equal(predicted, lbl)
                     val_acc = np.sum(val_acc.numpy()) / val_acc.numpy().shape[-1] * 100
                 progress_bar.update(self.batch_size)
