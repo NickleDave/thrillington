@@ -346,7 +346,7 @@ class ActionNetwork(tf.keras.Model):
     def __init__(self, num_actions):
         super(ActionNetwork, self).__init__()
         self.num_actions = num_actions
-        self.fc = tf.keras.layers.Dense(units=num_actions, activation='softmax')
+        self.fc = tf.keras.layers.Dense(units=num_actions, activation='linear')
 
     def forward(self, h_t):
         """forward pass through ActionNetwork
