@@ -166,6 +166,8 @@ class GlimpseNetwork(tf.keras.Model):
         self.glimpse_sensor = GlimpseSensor(g_w=g_w, k=k, s=s)
         self.theta_g_0 = tf.keras.layers.Dense(units=h_g_units, activation='relu')
         self.theta_g_1 = tf.keras.layers.Dense(units=h_l_units, activation='relu')
+        self.linear_h_g = tf.keras.layers.Dense(units=h_g_units, activation='linear')
+        self.linear_h_l = tf.keras.layers.Dense(units=h_l_units, activation='linear')
         self.theta_g_2 = tf.keras.layers.Dense(units=h_gt_units, activation='relu')
 
     def forward(self, images, loc):
@@ -203,7 +205,9 @@ class GlimpseNetwork(tf.keras.Model):
         rho_vec = tf.reshape(glimpse.rho, shape=(batch_size, k * g * g * channels))
         h_g = self.theta_g_0(rho_vec)
         h_l = self.theta_g_1(loc)
-        g_t = self.theta_g_2(h_g + h_l)
+        g_t = self.theta_g_2(
+            self.linear_h_g(h_g) + self.linear_h_l(h_l)
+        )
         return glimpse, g_t
 
 
