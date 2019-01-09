@@ -425,6 +425,8 @@ class Trainer:
                     # compute loss for REINFORCE algorithm
                     # summed over timesteps and averaged across batch
                     adjusted_reward = R - baselines
+                    # note -log_pis below:
+                    # REINFORCE uses gradient ascent so we minimize **negative** cost
                     loss_reinforce = tf.reduce_sum((-log_pis * adjusted_reward), axis=1)
                     loss_reinforce = tf.reduce_mean(loss_reinforce)
 
