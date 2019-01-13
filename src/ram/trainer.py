@@ -431,15 +431,20 @@ class Trainer:
                     loss_reinforce = tf.reduce_mean(loss_reinforce)
 
                     # sum up into hybrid loss
-                    loss_hybrid = loss_action + loss_baseline + loss_reinforce
+                    loss_hybrid = loss_action + loss_reinforce
 
-                # apply reinforce loss **only** to location network and baseline network
-                lt_bt_params = [var for net in [self.model.location_network,
-                                                self.model.baseline]
-                                for var in net.variables]
-                reinforce_grads = tape.gradient(loss_reinforce, lt_bt_params)
-                self.optimizer.apply_gradients(zip(reinforce_grads, lt_bt_params),
+                # apply reinforce loss **only** to location network
+                lt_params = self.model.location_network.variables
+                reinforce_grads = tape.gradient(loss_reinforce, lt_params)
+                self.optimizer.apply_gradients(zip(reinforce_grads, lt_params),
                                                global_step=tf.train.get_or_create_global_step())
+
+                # apply baseline loss to baseline network
+                bt_params = self.model.baseline.variables
+                baseline_grads = tape.gradient(loss_baseline, bt_params)
+                self.optimizer.apply_gradients(zip(baseline_grads, bt_params),
+                                               global_step=tf.train.get_or_create_global_step())
+
                 # apply hybrid loss to glimpse network, core network, and action network
                 params = [var for net in [self.model.glimpse_network,
                                           self.model.action_network,
