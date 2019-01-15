@@ -419,9 +419,9 @@ class Trainer:
                     adjusted_reward = R - baselines
                     # sum across time steps, "vectorized" way of looping from 1 to T
                     # negative sign because REINFORCE uses gradient ascent so we minimize **negative** cost
-                    loss_reinforce = tf.reduce_sum((-eligibility_traces * adjusted_reward), axis=1)
+                    loss_reinforce = tf.reduce_sum((eligibility_traces * adjusted_reward), axis=1)
                     # get mean across batch
-                    loss_reinforce = tf.reduce_mean(loss_reinforce)
+                    loss_reinforce = -tf.reduce_mean(loss_reinforce)
 
                     # sum up into hybrid loss
                     loss_hybrid = loss_action + loss_reinforce
