@@ -357,8 +357,7 @@ class Trainer:
 
                 out_t_minus_1 = self.model.reset()
 
-                mus = []
-                log_pis = []
+                eligibility_traces = []
                 baselines = []
 
                 with tf.GradientTape(persistent=True) as tape:
@@ -371,37 +370,24 @@ class Trainer:
                     for t in range(self.model.glimpses):
                         out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
 
-                        mus.append(out.mu)
                         baselines.append(out.b_t)
                         if save_examples:
                             if num_examples_saved < self.num_examples_to_save:
                                 locs_t.append(out.l_t.numpy())
                                 fixations_t.append(out.fixations)
                                 glimpses_t.append(out.rho.numpy())
-                        # determine probability of choosing location l_t, given
-                        # distribution parameterized by mu (output of location network)
-                        # and the constant standard deviation specified as a parameter.
-                        # Assume both dimensions are independent
-                        # 1. we get log probability from pdf for each dimension
-                        # 2. we want the joint distribution which is the product of the pdfs
-                        # 3. so we sum the log prob, since log(p(x) * p(y)) = log(p(x)) + log(p(y))
-                        mu_distrib = tf.distributions.Normal(loc=out.mu,
-                                                             scale=self.model.loc_std)
-                        log_pi = mu_distrib.log_prob(value=out.l_t)
-                        log_pi = tf.reduce_sum(log_pi, axis=1)
-                        log_pis.append(log_pi)
+
+                        # compute eligibility trace for mu as derived on p.238 of Williams 1992
+                        # (there called "characteristic eligibility")
+                        eligibility_trace = (out.l_t - out.mu) / (self.model.loc_std ** 2)
+                        # we have log probability of choosing co-ordinate x and y and
+                        # we want log probability of the overall "action"
+                        # since they are independent, we would multiply them to get joint probability
+                        # here they are natural log so we can sum them, i.e., ln x + ln y = ln xy
+                        eligibility_trace = tf.reduce_sum(eligibility_trace, axis=1)
+                        eligibility_traces.append(eligibility_trace)
 
                         out_t_minus_1 = out
-
-                    # convert lists to tensors, reshape to (batch size x number of glimpses)
-                    # for calculations below
-                    baselines = tf.stack(baselines)
-                    baselines = tf.squeeze(baselines)
-                    baselines = tf.transpose(baselines, perm=[1, 0])
-
-                    log_pis = tf.stack(log_pis)
-                    log_pis = tf.squeeze(log_pis)
-                    log_pis = tf.transpose(log_pis, perm=[1, 0])
 
                     # repeat column vector n times where n = glimpses
                     # calculate reward.
@@ -417,17 +403,24 @@ class Trainer:
                     R = tf.expand_dims(R, axis=1)  # add axis
                     R = tf.tile(R, tf.constant([1, self.model.glimpses]))
 
-                    # compute losses for differentiable modules
                     loss_action = tf.losses.softmax_cross_entropy(tf.one_hot(lbl, depth=self.model.num_classes),
                                                                   out.a_t)
+
+                    # convert baseline and eligibility traces to
+                    # (batch size x number of glimpses)
+                    baselines = tf.stack(baselines, axis=1)
+                    baselines = tf.squeeze(baselines)
+                    eligibility_traces = tf.stack(eligibility_traces, axis=1)
+
                     loss_baseline = tf.losses.mean_squared_error(baselines, R)
 
                     # compute loss for REINFORCE algorithm
                     # summed over timesteps and averaged across batch
                     adjusted_reward = R - baselines
-                    # note -log_pis below:
-                    # REINFORCE uses gradient ascent so we minimize **negative** cost
-                    loss_reinforce = tf.reduce_sum((-log_pis * adjusted_reward), axis=1)
+                    # sum across time steps, "vectorized" way of looping from 1 to T
+                    # negative sign because REINFORCE uses gradient ascent so we minimize **negative** cost
+                    loss_reinforce = tf.reduce_sum((-eligibility_traces * adjusted_reward), axis=1)
+                    # get mean across batch
                     loss_reinforce = tf.reduce_mean(loss_reinforce)
 
                     # sum up into hybrid loss
