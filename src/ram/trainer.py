@@ -357,7 +357,6 @@ class Trainer:
 
                 out_t_minus_1 = self.model.reset()
 
-                eligibility_traces = []
                 baselines = []
 
                 with tf.GradientTape(persistent=True) as tape:
@@ -376,16 +375,6 @@ class Trainer:
                                 locs_t.append(out.l_t.numpy())
                                 fixations_t.append(out.fixations)
                                 glimpses_t.append(out.rho.numpy())
-
-                        # compute eligibility trace for mu as derived on p.238 of Williams 1992
-                        # (there called "characteristic eligibility")
-                        eligibility_trace = (out.l_t - out.mu) / (self.model.loc_std ** 2)
-                        # we have log probability of choosing co-ordinate x and y and
-                        # we want log probability of the overall "action"
-                        # since they are independent, we would multiply them to get joint probability
-                        # here they are natural log so we can sum them, i.e., ln x + ln y = ln xy
-                        eligibility_trace = tf.reduce_sum(eligibility_trace, axis=1)
-                        eligibility_traces.append(eligibility_trace)
 
                         out_t_minus_1 = out
 
@@ -406,11 +395,9 @@ class Trainer:
                     loss_action = tf.losses.softmax_cross_entropy(tf.one_hot(lbl, depth=self.model.num_classes),
                                                                   out.a_t)
 
-                    # convert baseline and eligibility traces to
-                    # (batch size x number of glimpses)
+                    # convert baseline to (batch size x number of glimpses)
                     baselines = tf.stack(baselines, axis=1)
                     baselines = tf.squeeze(baselines)
-                    eligibility_traces = tf.stack(eligibility_traces, axis=1)
 
                     loss_baseline = tf.losses.mean_squared_error(baselines, R)
 
@@ -418,9 +405,9 @@ class Trainer:
                     # summed over timesteps and averaged across batch
                     adjusted_reward = R - baselines
                     # sum across time steps, "vectorized" way of looping from 1 to T
+                    loss_reinforce = tf.reduce_sum(adjusted_reward, axis=1)
+                    # get mean across batch;
                     # negative sign because REINFORCE uses gradient ascent so we minimize **negative** cost
-                    loss_reinforce = tf.reduce_sum((eligibility_traces * adjusted_reward), axis=1)
-                    # get mean across batch
                     loss_reinforce = -tf.reduce_mean(loss_reinforce)
 
                     # sum up into hybrid loss
