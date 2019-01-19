@@ -329,9 +329,18 @@ class LocationNetwork(tf.keras.Model):
             with shape (B, 2)
         """
         mu = self.fc(h_t)
-        noise = tf.random_normal(mu.get_shape(), stddev=self.loc_std)
+
+        @tf.custom_gradient
+        def g(mu):
+            y = tf.random_normal(mu.get_shape(), mean=mu, stddev=self.loc_std)
+
+            def grad(dy):
+                return dy * ((y - mu) / self.loc_std**2)
+            return y, grad
+
+        y = g(mu)
         # run through tanh again to bound between -1 and 1
-        l_t = tf.tanh(mu + noise)
+        l_t = tf.tanh(y)
         return mu, l_t
 
 
