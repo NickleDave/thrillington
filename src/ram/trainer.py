@@ -14,6 +14,7 @@ import time
 from collections import namedtuple
 import logging
 from datetime import datetime
+import math
 
 import tensorflow as tf
 import numpy as np
@@ -405,35 +406,51 @@ class Trainer:
                     baselines = tf.stack(baselines, axis=1)
                     baselines = tf.squeeze(baselines)
 
-                    loss_reinforce = []
-                    for t in range(self.model.glimpses):
-                        # compute loss for REINFORCE algorithm averaged across batch.
-                        # Note that, because there's no gamma discounting, the total future reward
-                        # from any time step is just the actual reward on the last time step,
-                        # i.e. we can just tile R for t steps and subtract the baseline from that
-                        adjusted_reward = R[:, t] - baselines[:, t]
-                        # get mean across batch;
-                        # negative sign because REINFORCE uses gradient ascent so we minimize **negative** cost
-                        loss_reinforce.append(
-                            -tf.reduce_mean(adjusted_reward)
-                        )
+                    advantage = R - baselines
 
-                # have to apply reinforce updates for each time step
-                # as per Sutton Barto 2018, p.330
-                for t in range(self.model.glimpses):
-                    # apply reinforce loss **only** to location network
-                    # lt_params = self.model.location_network.variables
-                    # apply reinforce loss to location network, glimpse network, core network, and action network
-                    params = [var for net in [self.model.glimpse_network,
-                                              self.model.action_network,
-                                              self.model.core_network,
-                                              self.model.location_network,
-                                              self.model.baseline]
-                              for var in net.variables]
+                    # convert mu and locs_for_log_like to (batch size x number of glimpses)
+                    mu = tf.stack(mu, axis=1)
+                    mu = tf.squeeze(mu)
+                    locs_for_log_like = tf.stack(locs_for_log_like, axis=1)
+                    locs_for_log_like = tf.squeeze(locs_for_log_like)
 
-                    reinforce_grads = tape.gradient(loss_reinforce[t], params)
-                    self.optimizer.apply_gradients(zip(reinforce_grads, params),
-                                                   global_step=tf.train.get_or_create_global_step())
+                    loc_std = self.model.location_network.loc_std
+                    log_likelihood_locs = -0.5 * (tf.math.log(2 * math.pi) + tf.math.log(loc_std ** 2) +
+                                                  ((1 / loc_std ** 2) * (locs_for_log_like - mu)**2)
+                                                  )
+                    # assume each dimension is independent so joint probability is product of each
+                    # and since these are logs we can sum the log(p)
+                    log_likelihood_locs = tf.reduce_sum(log_likelihood_locs, axis=2)
+
+                    # oh but actually for the last time step we want to use the output of the action network
+                    # (we didn't do anything with the output of the location network, since we took our last glimpse)
+                    logsoftmax = tf.nn.log_softmax(logits=out.a_t)
+                    indices = [[row, col] for row, col in zip(range(200), predicted.numpy().tolist())]
+                    logsoftmax = tf.gather_nd(params=logsoftmax, indices=indices)
+                    logsoftmax = tf.expand_dims(logsoftmax, axis=1)
+
+                    # now we combine all the log likelihoods
+                    # notice not using last time step of lt
+                    all_log_likelihoods = tf.concat(values=[log_likelihood_locs[:, :-1], logsoftmax], axis=1)
+                    weighted_likelihoods = tf.multiply(all_log_likelihoods, advantage)
+                    # need to sum eligibility trace across time steps in the episode
+                    loss_reinforce = tf.reduce_sum(weighted_likelihoods, axis=1)
+                    # get the expected mean across 'episodes', i.e. the batch
+                    loss_reinforce = tf.reduce_mean(loss_reinforce)
+                    # negative because it's a "psuedo-loss"
+                    loss_reinforce = -loss_reinforce
+
+                # apply reinforce loss to location network, glimpse network, core network, and action network
+                params = [var for net in [self.model.glimpse_network,
+                                          self.model.action_network,
+                                          self.model.core_network,
+                                          self.model.location_network,
+                                          self.model.baseline]
+                          for var in net.variables]
+
+                reinforce_grads = tape.gradient(loss_reinforce, params)
+                self.optimizer.apply_gradients(zip(reinforce_grads, params),
+                                               global_step=tf.train.get_or_create_global_step())
 
                 # apply action loss to glimpse network, core network, and action network
                 params = [var for net in [self.model.glimpse_network,
