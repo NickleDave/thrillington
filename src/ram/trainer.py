@@ -358,6 +358,8 @@ class Trainer:
                 out_t_minus_1 = self.model.reset()
 
                 baselines = []
+                mu = []
+                locs_for_log_like = []
 
                 with tf.GradientTape(persistent=True) as tape:
                     if save_examples:
@@ -368,7 +370,8 @@ class Trainer:
 
                     for t in range(self.model.glimpses):
                         out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
-
+                        mu.append(out.mu)
+                        locs_for_log_like.append(out.l_t)
                         baselines.append(out.b_t)
                         if save_examples:
                             if num_examples_saved < self.num_examples_to_save:
@@ -389,6 +392,9 @@ class Trainer:
                     accs.append(acc)
                     R = tf.cast(R, dtype=tf.float32)
                     # reshape reward to (batch size x number of glimpses)
+                    # Note that, because we don't discount future reward, the return
+                    # from any time step is just the actual reward on the last time step,
+                    # i.e. we can just tile R for t steps and subtract the baseline from that
                     R = tf.expand_dims(R, axis=1)  # add axis
                     R = tf.tile(R, tf.constant([1, self.model.glimpses]))
 
