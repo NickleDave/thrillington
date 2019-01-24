@@ -268,6 +268,19 @@ class CoreNetwork(tf.keras.Model):
         return h_t
 
 
+def make_normal_reinforce(loc_std):
+    # enclose normal_reinforce in a factory function so we can
+    # make a tensor that "remembers" the stddev
+    @tf.custom_gradient
+    def normal_reinforce(mu):
+        y = tf.random_normal(mu.get_shape(), mean=mu, stddev=loc_std)
+
+        def grad(dy):
+            return dy * ((y - mu) / loc_std ** 2)
+        return y, grad
+    return normal_reinforce
+
+
 class LocationNetwork(tf.keras.Model):
     """Uses internal state `h_t` of core network
     to produce location coordinates `l_t` for the
@@ -301,6 +314,7 @@ class LocationNetwork(tf.keras.Model):
         self.output_size = output_size
         self.loc_std = loc_std
         self.fc = tf.keras.layers.Dense(units=output_size, activation='tanh')
+        self.normal_reinforce = make_normal_reinforce(loc_std=self.loc_std)
 
     def forward(self, h_t):
         """forward pass through LocationNetwork.
@@ -329,16 +343,7 @@ class LocationNetwork(tf.keras.Model):
             with shape (B, 2)
         """
         mu = self.fc(h_t)
-
-        @tf.custom_gradient
-        def g(mu):
-            y = tf.random_normal(mu.get_shape(), mean=mu, stddev=self.loc_std)
-
-            def grad(dy):
-                return dy * ((y - mu) / self.loc_std**2)
-            return y, grad
-
-        y = g(mu)
+        y = self.normal_reinforce(mu)
         # run through tanh again to bound between -1 and 1
         l_t = tf.tanh(y)
         return mu, l_t
