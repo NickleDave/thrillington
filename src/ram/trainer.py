@@ -399,45 +399,49 @@ class Trainer:
                     baselines = tf.stack(baselines, axis=1)
                     baselines = tf.squeeze(baselines)
 
-                    loss_baseline = tf.losses.mean_squared_error(baselines, R)
+                    loss_reinforce = []
+                    for t in range(self.model.glimpses):
+                        # compute loss for REINFORCE algorithm averaged across batch.
+                        # Note that, because there's no gamma discounting, the total future reward
+                        # from any time step is just the actual reward on the last time step,
+                        # i.e. we can just tile R for t steps and subtract the baseline from that
+                        adjusted_reward = R[:, t] - baselines[:, t]
+                        # get mean across batch;
+                        # negative sign because REINFORCE uses gradient ascent so we minimize **negative** cost
+                        loss_reinforce.append(
+                            -tf.reduce_mean(adjusted_reward)
+                        )
 
-                    # compute loss for REINFORCE algorithm
-                    # summed over timesteps and averaged across batch
-                    adjusted_reward = R - baselines
-                    # sum across time steps, "vectorized" way of looping from 1 to T
-                    loss_reinforce = tf.reduce_sum(adjusted_reward, axis=1)
-                    # get mean across batch;
-                    # negative sign because REINFORCE uses gradient ascent so we minimize **negative** cost
-                    loss_reinforce = -tf.reduce_mean(loss_reinforce)
+                # have to apply reinforce updates for each time step
+                # as per Sutton Barto 2018, p.330
+                for t in range(self.model.glimpses):
+                    # apply reinforce loss **only** to location network
+                    # lt_params = self.model.location_network.variables
+                    # apply reinforce loss to location network, glimpse network, core network, and action network
+                    params = [var for net in [self.model.glimpse_network,
+                                              self.model.action_network,
+                                              self.model.core_network,
+                                              self.model.location_network,
+                                              self.model.baseline]
+                              for var in net.variables]
 
-                    # sum up into hybrid loss
-                    loss_hybrid = loss_action + loss_reinforce
+                    reinforce_grads = tape.gradient(loss_reinforce[t], params)
+                    self.optimizer.apply_gradients(zip(reinforce_grads, params),
+                                                   global_step=tf.train.get_or_create_global_step())
 
-                # apply reinforce loss **only** to location network
-                lt_params = self.model.location_network.variables
-                reinforce_grads = tape.gradient(loss_reinforce, lt_params)
-                self.optimizer.apply_gradients(zip(reinforce_grads, lt_params),
-                                               global_step=tf.train.get_or_create_global_step())
-
-                # apply baseline loss to baseline network
-                bt_params = self.model.baseline.variables
-                baseline_grads = tape.gradient(loss_baseline, bt_params)
-                self.optimizer.apply_gradients(zip(baseline_grads, bt_params),
-                                               global_step=tf.train.get_or_create_global_step())
-
-                # apply hybrid loss to glimpse network, core network, and action network
+                # apply action loss to glimpse network, core network, and action network
                 params = [var for net in [self.model.glimpse_network,
                                           self.model.action_network,
                                           self.model.core_network]
                           for var in net.variables]
-                hybrid_grads = tape.gradient(loss_hybrid, params)
-                self.optimizer.apply_gradients(zip(hybrid_grads, params),
+                action_grads = tape.gradient(loss_action, params)
+                self.optimizer.apply_gradients(zip(action_grads, params),
                                                global_step=tf.train.get_or_create_global_step())
 
-                losses_reinforce.append(loss_reinforce.numpy())
-                losses_baseline.append(loss_baseline.numpy())
+                losses_reinforce.append(tf.reduce_mean(loss_reinforce).numpy())
+                losses_baseline.append(0)
                 losses_action.append(loss_action.numpy())
-                losses_hybrid.append(loss_hybrid.numpy())
+                losses_hybrid.append(0)
 
                 # deal with examples if we are saving them
                 if save_examples:
@@ -474,8 +478,8 @@ class Trainer:
 
                 progress_bar.set_description(
                     (
-                        "{:.1f}s - hybrid loss: {:.3f} - acc: {:.3f}".format(
-                            (toc-tic), loss_hybrid, acc)
+                        "{:.1f}s - reinforce loss: {:.3f} - acc: {:.3f}".format(
+                            (toc-tic), np.mean(loss_reinforce), acc)
                     )
                 )
                 progress_bar.update(self.batch_size)
