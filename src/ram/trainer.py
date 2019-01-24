@@ -432,12 +432,14 @@ class Trainer:
                     # now we combine all the log likelihoods
                     # notice not using last time step of lt
                     all_log_likelihoods = tf.concat(values=[log_likelihood_locs[:, :-1], logsoftmax], axis=1)
+                    # pseudo-loss: the weighted log likelihood, which we let Tensorflow find the gradient of
+                    # to give us the policy gradient, see https://youtu.be/XGmd3wcyDg8?t=4049
                     weighted_likelihoods = tf.multiply(all_log_likelihoods, advantage)
-                    # need to sum eligibility trace across time steps in the episode
+                    # need to sum across time steps in the episode
                     loss_reinforce = tf.reduce_sum(weighted_likelihoods, axis=1)
                     # get the expected mean across 'episodes', i.e. the batch
                     loss_reinforce = tf.reduce_mean(loss_reinforce)
-                    # negative because it's a "psuedo-loss"
+                    # negative because we actually want to maximize
                     loss_reinforce = -loss_reinforce
 
                 # apply reinforce loss to location network, glimpse network, core network, and action network
