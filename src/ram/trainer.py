@@ -425,7 +425,7 @@ class Trainer:
                     # oh but actually for the last time step we want to use the output of the action network
                     # (we didn't do anything with the output of the location network, since we took our last glimpse)
                     logsoftmax = tf.nn.log_softmax(logits=out.a_t)
-                    indices = [[row, col] for row, col in zip(range(200), predicted.numpy().tolist())]
+                    indices = [[row, col] for row, col in zip(range(out.a_t.shape[0]), predicted.numpy().tolist())]
                     logsoftmax = tf.gather_nd(params=logsoftmax, indices=indices)
                     logsoftmax = tf.expand_dims(logsoftmax, axis=1)
 
