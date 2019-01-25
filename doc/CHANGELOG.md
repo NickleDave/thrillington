@@ -20,7 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - change argparser to use positional arguments `command` and `config`
   + before all arguments were "optional" (although the program would crash without them)
 
-
+### Fixed
+- fix action network and glimpse network, did not have correct number of layers
+- fix how policy gradient is calculated, now properly uses REINFORCE with baseline
+  + drawing in large part from LuaTorch implementation by Element, see:
+    - http://torch.ch/blog/2015/09/21/rmva.html
+    - https://github.com/torch/rnn
 
 ## [0.1.0] - 2018-12-01
 ### Added
