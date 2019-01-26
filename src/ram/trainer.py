@@ -117,8 +117,9 @@ class Trainer:
 
         self.shuffle_each_epoch = shuffle_each_epoch
         if self.shuffle_each_epoch:
-            self.train_data = self.train_data.shuffle(buffer_size=self.num_train_samples,
-                                                      reshuffle_each_iteration=True)
+            self.train_data = self.train_data.apply(
+                tf.data.experimental.shuffle_and_repeat(buffer_size=self.num_train_samples)
+            )
 
         # are we restoring a previous model?
         self.restore = restore
