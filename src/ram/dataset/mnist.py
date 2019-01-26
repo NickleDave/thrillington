@@ -336,14 +336,10 @@ def _dataset(images_file, labels_file, sample_inds_file):
     labels = np.load(labels_file)
     sample_inds = np.load(sample_inds_file)
 
-    images = normalize(images)
-
-    def gen():
-        for image, label, batch_sample_inds in zip(images, labels, sample_inds):
-            yield image, label, batch_sample_inds
-
-    ds = tf.data.Dataset.from_generator(gen, (tf.float32, tf.int32, tf.int32), ((28, 28, 1), [], []))
-    data = Data(dataset=ds, num_samples=len(labels), sample_inds=sample_inds)
+    data = tf.data.Dataset.from_tensor_slices((images, labels, sample_inds))
+    data = data.map(map_func=lambda img, lbl, inds: tuple([normalize(img), lbl, inds]),
+                    num_parallel_calls=4)
+    data = Data(dataset=data, num_samples=len(labels), sample_inds=sample_inds)
     return data
 
 
