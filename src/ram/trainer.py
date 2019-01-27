@@ -299,7 +299,7 @@ class Trainer:
         """
         for epoch in range(1, self.epochs+1):
             self.logger.info(
-                f'\nEpoch: {epoch}/{self.epochs} - learning rate: {self.learning_rate:.6f}'
+                f'\nEpoch: {epoch}/{self.epochs} - learning rate: {self.optimizer._learning_rate:.6f}'
             )
 
             # if this is an epoch on which we should save examples
