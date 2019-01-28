@@ -444,11 +444,10 @@ class Trainer:
                     # negative because we actually want to maximize
                     loss_reinforce = -loss_reinforce
 
-                # apply reinforce loss to location network, glimpse network, core network, and action network
-                params = [var for net in [self.model.glimpse_network,
-                                          self.model.action_network,
-                                          self.model.core_network,
-                                          self.model.location_network,
+                    loss_hybrid = loss_action + loss_reinforce
+
+                # apply just reinforce loss to location network and baseline
+                params = [var for net in [self.model.location_network,
                                           self.model.baseline]
                           for var in net.variables]
 
@@ -456,19 +455,19 @@ class Trainer:
                 self.optimizer.apply_gradients(zip(reinforce_grads, params),
                                                global_step=tf.train.get_or_create_global_step())
 
-                # apply action loss to glimpse network, core network, and action network
+                # apply action loss + reinforce loss to glimpse network, core network, and action network
                 params = [var for net in [self.model.glimpse_network,
                                           self.model.action_network,
                                           self.model.core_network]
                           for var in net.variables]
-                action_grads = tape.gradient(loss_action, params)
-                self.optimizer.apply_gradients(zip(action_grads, params),
+                hybrid_grads = tape.gradient(loss_hybrid, params)
+                self.optimizer.apply_gradients(zip(hybrid_grads, params),
                                                global_step=tf.train.get_or_create_global_step())
 
-                losses_reinforce.append(tf.reduce_mean(loss_reinforce).numpy())
+                losses_reinforce.append(loss_reinforce.numpy())
                 losses_baseline.append(0)
                 losses_action.append(loss_action.numpy())
-                losses_hybrid.append(0)
+                losses_hybrid.append(loss_hybrid.numpy())
 
                 # deal with examples if we are saving them
                 if save_examples:
@@ -505,8 +504,8 @@ class Trainer:
 
                 progress_bar.set_description(
                     (
-                        "{:.1f}s - reinforce loss: {:.3f} - acc: {:.3f}".format(
-                            (toc-tic), np.mean(loss_reinforce), acc)
+                        "{:.1f}s - reinforce loss: {:.3f} - reinforce hybrid: {:.3f} - acc: {:.3f}".format(
+                            (toc-tic), loss_reinforce.numpy(), loss_hybrid.numpy(), acc)
                     )
                 )
                 progress_bar.update(self.batch_size)
