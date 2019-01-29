@@ -364,8 +364,8 @@ class ActionNetwork(tf.keras.Model):
 
 class BaselineNetwork(tf.keras.Model):
     """Provides estimate of (state) value that does not depend on
-    actions taken. Its gradient is used during optimization
-    as a baseline, subtracted from the action-value gradient,
+    actions taken. Used during optimization as a baseline,
+    subtracted from return on each time step,
     to reduce variance of the policy function gradient.
 
     Attributes
@@ -380,8 +380,8 @@ class BaselineNetwork(tf.keras.Model):
         ----------
         output_size : int
             Number of units in fully-connected layer of BaselineNetwork.
-            Should be a scalar, since it is the estimate of R_t, and is
-            subtracted from . Default is 1.
+            Should be a scalar, since it is the estimate of total return
+            from the current state. Default is 1.
         """
         super(BaselineNetwork, self).__init__()
         self.output_size = output_size
