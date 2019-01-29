@@ -405,14 +405,15 @@ class Trainer:
                     R = tf.expand_dims(R, axis=1)  # add axis
                     R = tf.tile(R, tf.constant([1, self.model.glimpses]))
 
-                    loss_action = tf.losses.softmax_cross_entropy(tf.one_hot(lbl, depth=self.model.num_classes),
-                                                                  out.a_t)
-
                     # convert baseline to (batch size x number of glimpses)
                     baselines = tf.stack(baselines, axis=1)
                     baselines = tf.squeeze(baselines)
-
                     advantage = R - baselines
+
+                    loss_baseline = tf.losses.mean_squared_error(R, baselines)
+
+                    loss_action = tf.losses.softmax_cross_entropy(tf.one_hot(lbl, depth=self.model.num_classes),
+                                                                  out.a_t)
 
                     # convert mu and locs_for_log_like to (batch size x number of glimpses)
                     mu = tf.stack(mu, axis=1)
@@ -475,13 +476,17 @@ class Trainer:
 
                     loss_hybrid = loss_action + loss_reinforce
 
-                # apply just reinforce loss to location network and baseline
-                params = [var for net in [self.model.location_network,
-                                          self.model.baseline]
-                          for var in net.variables]
-
+                # apply reinforce loss to just location network
+                params = self.model.location_network.variables
                 reinforce_grads = tape.gradient(loss_reinforce, params)
                 self.optimizer.apply_gradients(zip(reinforce_grads, params),
+                                               global_step=tf.train.get_or_create_global_step())
+
+                # apply MSE loss to baseline, p.5 of Mnih et al. 2014
+                # apply reinforce loss to just location network
+                params = self.model.baseline.variables
+                baseline_grads = tape.gradient(loss_baseline, params)
+                self.optimizer.apply_gradients(zip(baseline_grads, params),
                                                global_step=tf.train.get_or_create_global_step())
 
                 # apply action loss + reinforce loss to glimpse network, core network, and action network
@@ -494,7 +499,7 @@ class Trainer:
                                                global_step=tf.train.get_or_create_global_step())
 
                 losses_reinforce.append(loss_reinforce.numpy())
-                losses_baseline.append(0)
+                losses_baseline.append(loss_baseline.numpy())
                 losses_action.append(loss_action.numpy())
                 losses_hybrid.append(loss_hybrid.numpy())
 
@@ -533,8 +538,14 @@ class Trainer:
 
                 progress_bar.set_description(
                     (
-                        "{:.1f}s - reinforce loss: {:.3f} - reinforce hybrid: {:.3f} - acc: {:.3f}".format(
-                            (toc-tic), loss_reinforce.numpy(), loss_hybrid.numpy(), acc)
+                        "{:.1f}s. Loss: reinforce {:.3f}; action {:.3f}; baseline {:.3f}; hybrid {:.3f}. "
+                        "Acc: {:.3f}".format(
+                            (toc-tic),
+                            loss_reinforce.numpy(),
+                            loss_action.numpy(),
+                            loss_baseline.numpy(),
+                            loss_hybrid.numpy(),
+                            acc)
                     )
                 )
                 progress_bar.update(self.batch_size)
