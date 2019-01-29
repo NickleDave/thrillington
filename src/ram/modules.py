@@ -78,9 +78,11 @@ class GlimpseSensor(tf.keras.Model):
         batch_size, img_H, img_W, C = images.shape.as_list()
         # convert image co-ordinates from normalized to co-ordinates within
         # the specific size of the images
-        loc_0 = ((loc_normd[:, 0] + 1) / 2) * img_H
+        # first convert location to range from 0 to 1
+        # and then multiply by number of pixels - 1 (because of zero indexing)
+        loc_0 = ((loc_normd[:, 0] + 1) / 2) * (img_H - 1)
         loc_0 = tf.cast(tf.round(loc_0), tf.int32)
-        loc_1 = ((loc_normd[:, 1] + 1) / 2) * img_W
+        loc_1 = ((loc_normd[:, 1] + 1) / 2) * (img_W - 1)
         loc_1 = tf.cast(tf.round(loc_1), tf.int32)
         fixations = tf.stack([loc_0, loc_1], axis=1)
 
