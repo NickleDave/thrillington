@@ -35,6 +35,7 @@ MeanLossTuple = namedtuple('MeanLossTuple', ['mn_reinforce_loss',
                                              'mn_hybrid_loss',
                                              ])
 
+EPSILON = 1e-6  # to ensure rounding in right direction below, in _train_one_epoch
 
 class Trainer:
     """Trainer object for training the RAM model"""
@@ -363,6 +364,7 @@ class Trainer:
                 baselines = []
                 mu = []
                 locs_for_log_like = []
+                fixations_for_p = []
 
                 with tf.GradientTape(persistent=True) as tape:
                     if save_examples:
@@ -375,7 +377,9 @@ class Trainer:
                         out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
                         mu.append(out.mu)
                         locs_for_log_like.append(out.l_t)
+                        fixations_for_p.append(out.fixations)
                         baselines.append(out.b_t)
+
                         if save_examples:
                             if num_examples_saved < self.num_examples_to_save:
                                 locs_t.append(out.l_t.numpy())
@@ -415,14 +419,40 @@ class Trainer:
                     mu = tf.squeeze(mu)
                     locs_for_log_like = tf.stack(locs_for_log_like, axis=1)
                     locs_for_log_like = tf.squeeze(locs_for_log_like)
+                    # discard last one since it wasn't used
+                    mu = mu[:, :-1, :]
+                    locs_for_log_like = locs_for_log_like[:, :-1, :]
 
                     loc_std = self.model.location_network.loc_std
-                    log_likelihood_locs = -0.5 * (tf.math.log(2 * math.pi) + tf.math.log(loc_std ** 2) +
-                                                  ((1 / loc_std ** 2) * (locs_for_log_like - mu)**2)
-                                                  )
+
+                    dists = tf.distributions.Normal(loc=mu, scale=loc_std)
+
+                    # convert fixations to (batch size x number of glimpses)
+                    fixations_for_p = tf.stack(fixations_for_p, axis=1)
+                    fixations_for_p = tf.squeeze(fixations_for_p)
+                    # discard fixation[0] since that one was random
+                    fixations_for_p = fixations_for_p[:, 1:, :]
+
+                    img_H, img_W = img.shape.as_list()[1:3]
+                    # below, use EPSILON constant defined above, instead of np.finfo(np.float32).eps
+                    # which was not large enough to ensure rounding in the right direction
+                    p_bin_min_edges = tf.cast(fixations_for_p, tf.float32) - (0.5 - EPSILON)
+                    p_bin_max_edges = tf.cast(fixations_for_p, tf.float32) + (0.5 - EPSILON)
+                    p_bin_min_edges_H = 2 * p_bin_min_edges[:, :, 0] / (img_H - 1) - 1
+                    p_bin_min_edges_W = 2 * p_bin_min_edges[:, :, 1] / (img_W - 1) - 1
+                    p_bin_max_edges_H = 2 * p_bin_max_edges[:, :, 0] / (img_H - 1) - 1
+                    p_bin_max_edges_W = 2 * p_bin_max_edges[:, :, 1] / (img_W - 1) - 1
+                    p_bin_min_edges = tf.stack((p_bin_min_edges_H, p_bin_min_edges_W), axis=2)
+                    p_bin_max_edges = tf.stack((p_bin_max_edges_H, p_bin_max_edges_W), axis=2)
+
+                    cdf_min = dists.cdf(p_bin_min_edges)
+                    cdf_max = dists.cdf(p_bin_max_edges)
+                    p_fixations = cdf_max - cdf_min
+                    p_fixations = p_fixations + np.finfo(np.float32).eps  # to avoid getting -infinity
+                    log_p_fixations = tf.log(p_fixations)
                     # assume each dimension is independent so joint probability is product of each
                     # and since these are logs we can sum the log(p)
-                    log_likelihood_locs = tf.reduce_sum(log_likelihood_locs, axis=2)
+                    log_p_fixations = tf.reduce_sum(log_p_fixations, axis=2)
 
                     # oh but actually for the last time step we want to use the output of the action network
                     # (we didn't do anything with the output of the location network, since we took our last glimpse)
@@ -431,9 +461,8 @@ class Trainer:
                     logsoftmax = tf.gather_nd(params=logsoftmax, indices=indices)
                     logsoftmax = tf.expand_dims(logsoftmax, axis=1)
 
-                    # now we combine all the log likelihoods
-                    # notice not using last time step of lt
-                    all_log_likelihoods = tf.concat(values=[log_likelihood_locs[:, :-1], logsoftmax], axis=1)
+                    # now we combine all the log likelihoods, last time step is log of actions
+                    all_log_likelihoods = tf.concat(values=[log_p_fixations, logsoftmax], axis=1)
                     # pseudo-loss: the weighted log likelihood, which we let Tensorflow find the gradient of
                     # to give us the policy gradient, see https://youtu.be/XGmd3wcyDg8?t=4049
                     weighted_likelihoods = tf.multiply(all_log_likelihoods, advantage)
