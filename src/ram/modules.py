@@ -385,7 +385,7 @@ class BaselineNetwork(tf.keras.Model):
         """
         super(BaselineNetwork, self).__init__()
         self.output_size = output_size
-        self.fc = tf.keras.layers.Dense(units=output_size, activation='relu')
+        self.fc = tf.keras.layers.Dense(units=output_size, activation='sigmoid')
 
     def forward(self, h_t):
         """forward pass through BaselineNetwork.
