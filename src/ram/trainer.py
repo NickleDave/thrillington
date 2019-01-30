@@ -428,29 +428,7 @@ class Trainer:
 
                     dists = tf.distributions.Normal(loc=mu, scale=loc_std)
 
-                    # convert fixations to (batch size x number of glimpses)
-                    fixations_for_p = tf.stack(fixations_for_p, axis=1)
-                    fixations_for_p = tf.squeeze(fixations_for_p)
-                    # discard fixation[0] since that one was random
-                    fixations_for_p = fixations_for_p[:, 1:, :]
-
-                    img_H, img_W = img.shape.as_list()[1:3]
-                    # below, use EPSILON constant defined above, instead of np.finfo(np.float32).eps
-                    # which was not large enough to ensure rounding in the right direction
-                    p_bin_min_edges = tf.cast(fixations_for_p, tf.float32) - (0.5 - EPSILON)
-                    p_bin_max_edges = tf.cast(fixations_for_p, tf.float32) + (0.5 - EPSILON)
-                    p_bin_min_edges_H = 2 * p_bin_min_edges[:, :, 0] / (img_H - 1) - 1
-                    p_bin_min_edges_W = 2 * p_bin_min_edges[:, :, 1] / (img_W - 1) - 1
-                    p_bin_max_edges_H = 2 * p_bin_max_edges[:, :, 0] / (img_H - 1) - 1
-                    p_bin_max_edges_W = 2 * p_bin_max_edges[:, :, 1] / (img_W - 1) - 1
-                    p_bin_min_edges = tf.stack((p_bin_min_edges_H, p_bin_min_edges_W), axis=2)
-                    p_bin_max_edges = tf.stack((p_bin_max_edges_H, p_bin_max_edges_W), axis=2)
-
-                    cdf_min = dists.cdf(p_bin_min_edges)
-                    cdf_max = dists.cdf(p_bin_max_edges)
-                    p_fixations = cdf_max - cdf_min
-                    p_fixations = p_fixations + np.finfo(np.float32).eps  # to avoid getting -infinity
-                    log_p_fixations = tf.log(p_fixations)
+                    log_p_fixations = dists.log_prob(locs_for_log_like)
                     # assume each dimension is independent so joint probability is product of each
                     # and since these are logs we can sum the log(p)
                     log_p_fixations = tf.reduce_sum(log_p_fixations, axis=2)
