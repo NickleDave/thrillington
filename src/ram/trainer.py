@@ -14,7 +14,6 @@ import time
 from collections import namedtuple
 import logging
 from datetime import datetime
-import math
 
 import tensorflow as tf
 import numpy as np
@@ -35,7 +34,6 @@ MeanLossTuple = namedtuple('MeanLossTuple', ['mn_reinforce_loss',
                                              'mn_hybrid_loss',
                                              ])
 
-EPSILON = 1e-6  # to ensure rounding in right direction below, in _train_one_epoch
 
 class Trainer:
     """Trainer object for training the RAM model"""
@@ -145,6 +143,7 @@ class Trainer:
 
     @classmethod
     def from_config(cls, config, train_data, val_data=None, logger=None):
+
         if config.train.optimizer == 'momentum':
             optimizer = tf.train.MomentumOptimizer(momentum=config.train.momentum,
                                                    learning_rate=config.train.learning_rate)
