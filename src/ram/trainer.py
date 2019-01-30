@@ -472,8 +472,8 @@ class Trainer:
                                           self.model.action_network,
                                           self.model.core_network]
                           for var in net.variables]
-                hybrid_grads = tape.gradient(loss_hybrid, params)
-                self.optimizer.apply_gradients(zip(hybrid_grads, params),
+                action_grads = tape.gradient(loss_action, params)
+                self.optimizer.apply_gradients(zip(action_grads, params),
                                                global_step=tf.train.get_or_create_global_step())
 
                 losses_reinforce.append(loss_reinforce.numpy())
