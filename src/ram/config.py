@@ -19,6 +19,7 @@ VALID_OPTIONS = {
     'train': [
         'batch_size',
         'learning_rate',
+        'decay_rate',
         'epochs',
         'optimizer',
         'momentum',
@@ -104,6 +105,7 @@ class TrainConfig(object):
     """class that represents configuration for training a RAM model"""
     batch_size = attr.ib(converter=int, default=10)
     learning_rate = attr.ib(converter=float, default=1e-3)
+    decay_rate = attr.ib(converter=attr.converters.optional(float), default=None)
     epochs = attr.ib(converter=int, default=200)
     optimizer = attr.ib(type=str, default='momentum')
     beta1 = attr.ib(converter=float, default=0.9)
