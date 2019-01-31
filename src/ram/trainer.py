@@ -143,14 +143,22 @@ class Trainer:
 
     @classmethod
     def from_config(cls, config, train_data, val_data=None, logger=None):
+        if config.train.decay_rate:
+            learning_rate = tf.train.exponential_decay(
+                learning_rate=config.train.learning_rate,
+                decay_steps=config.train.epochs,
+                decay_rate=config.train.decay_rate,
+                global_step=tf.train.get_or_create_global_step())
+        else:
+            learning_rate = config.train.learning_rate
 
         if config.train.optimizer == 'momentum':
             optimizer = tf.train.MomentumOptimizer(momentum=config.train.momentum,
-                                                   learning_rate=config.train.learning_rate)
+                                                   learning_rate=learning_rate)
         elif config.train.optimizer == 'sgd':
-            optimizer = tf.train.GradientDescentOptimizer(learning_rate=config.train.learning_rate)
+            optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
         elif config.train.optimizer == 'adam':
-            optimizer = tf.train.AdamOptimizer(learning_rate=config.train.learning_rate,
+            optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate,
                                                beta1=config.train.beta1,
                                                beta2=config.train.beta2,
                                                epsilon=config.train.epsilon)
@@ -159,7 +167,7 @@ class Trainer:
 
         return cls(config=config,
                    batch_size=config.train.batch_size,
-                   learning_rate=config.train.learning_rate,
+                   learning_rate=learning_rate,
                    epochs=config.train.epochs,
                    optimizer=optimizer,
                    train_data=train_data,
@@ -299,7 +307,7 @@ class Trainer:
         """
         for epoch in range(1, self.epochs+1):
             self.logger.info(
-                f'\nEpoch: {epoch}/{self.epochs} - learning rate: {self.optimizer._learning_rate:.6f}'
+                f'\nEpoch: {epoch}/{self.epochs} - learning rate: {self.learning_rate:.6f}'
             )
 
             # if this is an epoch on which we should save examples
