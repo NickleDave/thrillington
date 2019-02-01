@@ -42,7 +42,7 @@ class Trainer:
                  batch_size,
                  learning_rate,
                  epochs,
-                 optimizer,
+                 optimizers,
                  train_data,
                  val_data=None,
                  shuffle_each_epoch=True,
@@ -111,8 +111,8 @@ class Trainer:
         self.logger.info(f'Initial learning rate will be : {self.learning_rate}')
         self.epochs = epochs
         self.logger.info(f'Will train for a maximum of {self.epochs} epochs')
-        self.optimizer = optimizer
-        self.logger.info(f'Optimizer : {self.optimizer}')
+        self.optimizers = optimizers
+        self.logger.info(f'Optimizers : {self.optimizers}')
 
         self.shuffle_each_epoch = shuffle_each_epoch
         if self.shuffle_each_epoch:
@@ -152,16 +152,21 @@ class Trainer:
         else:
             learning_rate = config.train.learning_rate
 
+        optimizer_list = ['baseline_optimizer', 'reinforce_optimizer', 'hybrid_optimizer']
+        optimizers = {}
         if config.train.optimizer == 'momentum':
-            optimizer = tf.train.MomentumOptimizer(momentum=config.train.momentum,
-                                                   learning_rate=learning_rate)
+            for key in optimizer_list:
+                optimizers[key] = tf.train.MomentumOptimizer(momentum=config.train.momentum,
+                                                             learning_rate=learning_rate)
         elif config.train.optimizer == 'sgd':
-            optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+            for key in optimizer_list:
+                optimizers[key] = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
         elif config.train.optimizer == 'adam':
-            optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate,
-                                               beta1=config.train.beta1,
-                                               beta2=config.train.beta2,
-                                               epsilon=config.train.epsilon)
+            for key in optimizer_list:
+                optimizers[key] = tf.train.AdamOptimizer(learning_rate=learning_rate,
+                                                         beta1=config.train.beta1,
+                                                         beta2=config.train.beta2,
+                                                         epsilon=config.train.epsilon)
         else:
             raise ValueError(f'optimizer type not recognized: {config.train.optimizer}')
 
@@ -169,7 +174,7 @@ class Trainer:
                    batch_size=config.train.batch_size,
                    learning_rate=config.train.learning_rate,
                    epochs=config.train.epochs,
-                   optimizer=optimizer,
+                   optimizers=optimizers,
                    train_data=train_data,
                    val_data=val_data,
                    shuffle_each_epoch=config.train.shuffle_each_epoch,
@@ -277,7 +282,7 @@ class Trainer:
             self._name_and_create_data_dirs(results_dir)
             self.model = ram.RAM(batch_size=self.batch_size,
                                  **attr.asdict(self.config.model))
-            self.checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
+            self.checkpointer = tf.train.Checkpoint(**self.optimizers,
                                                     model=self.model,
                                                     optimizer_step=tf.train.get_or_create_global_step())
             self.load_checkpoint(checkpoint_path)
@@ -297,7 +302,7 @@ class Trainer:
                 self.model = ram.RAM(batch_size=self.batch_size,
                                      **attr.asdict(self.config.model))
                 self.logger.info(f'Model that will be trained: {self.model}')
-                self.checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
+                self.checkpointer = tf.train.Checkpoint(**self.optimizers,
                                                         model=self.model,
                                                         optimizer_step=tf.train.get_or_create_global_step())
                 self._train_one_model()
@@ -459,29 +464,36 @@ class Trainer:
 
                 # apply reinforce loss to just location network
                 # p.5 of Mnih et al. 2014, "The location network $f_l$ is always trained with REINFORCE."
-                params = self.model.location_network.variables
-                reinforce_grads = tape.gradient(loss_reinforce, params)
-                self.optimizer.apply_gradients(zip(reinforce_grads, params),
-                                               global_step=tf.train.get_or_create_global_step())
+                reinforce_params = self.model.location_network.variables
+                reinforce_grads = tape.gradient(loss_reinforce, reinforce_params)
 
                 # apply MSE loss to baseline, p.5 of Mnih et al. 2014
                 # apply reinforce loss to just location network
-                params = self.model.baseline.variables
-                baseline_grads = tape.gradient(loss_baseline, params)
-                self.optimizer.apply_gradients(zip(baseline_grads, params),
-                                               global_step=tf.train.get_or_create_global_step())
+                baseline_params = self.model.baseline.variables
+                baseline_grads = tape.gradient(loss_baseline, baseline_params)
 
                 # apply action loss + reinforce loss to glimpse network, core network, and action network
                 # p.4 "We learn these [action, core, and network parameters] to maximize reward".
                 # p.5 "We optimize cross entropy loss to train the action network and backpropagate the
                 # gradients through the core and glimpse networks."
-                params = [var for net in [self.model.glimpse_network,
-                                          self.model.action_network,
-                                          self.model.core_network]
-                          for var in net.variables]
-                hybrid_grads = tape.gradient(loss_hybrid, params)
-                self.optimizer.apply_gradients(zip(hybrid_grads, params),
-                                               global_step=tf.train.get_or_create_global_step())
+                hybrid_params = [var for net in [self.model.glimpse_network,
+                                                 self.model.action_network,
+                                                 self.model.core_network]
+                                 for var in net.variables]
+                hybrid_grads = tape.gradient(loss_hybrid, hybrid_params)
+
+                # use control_dependencies context manager to ensure weight updates from one loss
+                # don't affect other updates
+                with tf.control_dependencies([reinforce_grads, baseline_grads, hybrid_grads]):
+                    self.optimizers['reinforce_optimizer'].apply_gradients(
+                        zip(reinforce_grads, reinforce_params),
+                        global_step=tf.train.get_or_create_global_step())
+                    self.optimizers['baseline_optimizer'].apply_gradients(
+                        zip(baseline_grads, baseline_params),
+                        global_step=tf.train.get_or_create_global_step())
+                    self.optimizers['hybrid_optimizer'].apply_gradients(
+                        zip(hybrid_grads, hybrid_params),
+                        global_step=tf.train.get_or_create_global_step())
 
                 losses_reinforce.append(loss_reinforce.numpy())
                 losses_baseline.append(loss_baseline.numpy())
