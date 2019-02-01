@@ -422,22 +422,14 @@ class Trainer:
                     baselines = tf.stack(baselines, axis=1)
                     baselines = tf.squeeze(baselines)
                     advantage = R - baselines
-                    # discard last time step of advantage
-                    # since we don't use output of location network on that time step
-                    advantage = advantage[:, :-1]
 
                     # convert mu and locs_for_log_like to (batch size x number of glimpses)
                     mu = tf.stack(mu, axis=1)
                     mu = tf.squeeze(mu)
                     locs_for_log_like = tf.stack(locs_for_log_like, axis=1)
                     locs_for_log_like = tf.squeeze(locs_for_log_like)
-                    # discard last one since it wasn't used
-                    mu = mu[:, :-1, :]
-                    locs_for_log_like = locs_for_log_like[:, :-1, :]
 
-                    loc_std = self.model.location_network.loc_std
-
-                    dists = tf.distributions.Normal(loc=mu, scale=loc_std)
+                    dists = tf.distributions.Normal(loc=mu, scale=self.model.location_network.loc_std)
 
                     log_p_fixations = dists.log_prob(locs_for_log_like)
                     # assume each dimension is independent so joint probability is product of each
