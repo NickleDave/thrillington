@@ -167,7 +167,7 @@ class Trainer:
 
         return cls(config=config,
                    batch_size=config.train.batch_size,
-                   learning_rate=learning_rate,
+                   learning_rate=config.train.learning_rate,
                    epochs=config.train.epochs,
                    optimizer=optimizer,
                    train_data=train_data,
