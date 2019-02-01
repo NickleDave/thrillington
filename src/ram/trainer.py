@@ -458,6 +458,7 @@ class Trainer:
                     loss_hybrid = loss_action + loss_reinforce
 
                 # apply reinforce loss to just location network
+                # p.5 of Mnih et al. 2014, "The location network $f_l$ is always trained with REINFORCE."
                 params = self.model.location_network.variables
                 reinforce_grads = tape.gradient(loss_reinforce, params)
                 self.optimizer.apply_gradients(zip(reinforce_grads, params),
