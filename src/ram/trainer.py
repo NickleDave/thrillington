@@ -472,12 +472,15 @@ class Trainer:
                                                global_step=tf.train.get_or_create_global_step())
 
                 # apply action loss + reinforce loss to glimpse network, core network, and action network
+                # p.4 "We learn these [action, core, and network parameters] to maximize reward".
+                # p.5 "We optimize cross entropy loss to train the action network and backpropagate the
+                # gradients through the core and glimpse networks."
                 params = [var for net in [self.model.glimpse_network,
                                           self.model.action_network,
                                           self.model.core_network]
                           for var in net.variables]
-                action_grads = tape.gradient(loss_action, params)
-                self.optimizer.apply_gradients(zip(action_grads, params),
+                hybrid_grads = tape.gradient(loss_hybrid, params)
+                self.optimizer.apply_gradients(zip(hybrid_grads, params),
                                                global_step=tf.train.get_or_create_global_step())
 
                 losses_reinforce.append(loss_reinforce.numpy())
