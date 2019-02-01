@@ -395,6 +395,7 @@ class Trainer:
 
                         out_t_minus_1 = out
 
+                    # --------------------- first compute policy gradient with REINFORCE algorithm ---------------------
                     # repeat column vector n times where n = glimpses
                     # calculate reward.
                     # Remember that action network output a_t becomes predictions at last time step
@@ -416,11 +417,9 @@ class Trainer:
                     baselines = tf.stack(baselines, axis=1)
                     baselines = tf.squeeze(baselines)
                     advantage = R - baselines
-
-                    loss_baseline = tf.losses.mean_squared_error(R, baselines)
-
-                    loss_action = tf.losses.softmax_cross_entropy(tf.one_hot(lbl, depth=self.model.num_classes),
-                                                                  out.a_t)
+                    # discard last time step of advantage
+                    # since we don't use output of location network on that time step
+                    advantage = advantage[:, :-1]
 
                     # convert mu and locs_for_log_like to (batch size x number of glimpses)
                     mu = tf.stack(mu, axis=1)
@@ -440,24 +439,21 @@ class Trainer:
                     # and since these are logs we can sum the log(p)
                     log_p_fixations = tf.reduce_sum(log_p_fixations, axis=2)
 
-                    # oh but actually for the last time step we want to use the output of the action network
-                    # (we didn't do anything with the output of the location network, since we took our last glimpse)
-                    logsoftmax = tf.nn.log_softmax(logits=out.a_t)
-                    indices = [[row, col] for row, col in zip(range(out.a_t.shape[0]), predicted.numpy().tolist())]
-                    logsoftmax = tf.gather_nd(params=logsoftmax, indices=indices)
-                    logsoftmax = tf.expand_dims(logsoftmax, axis=1)
-
-                    # now we combine all the log likelihoods, last time step is log of actions
-                    all_log_likelihoods = tf.concat(values=[log_p_fixations, logsoftmax], axis=1)
                     # pseudo-loss: the weighted log likelihood, which we let Tensorflow find the gradient of
                     # to give us the policy gradient, see https://youtu.be/XGmd3wcyDg8?t=4049
-                    weighted_likelihoods = tf.multiply(all_log_likelihoods, advantage)
+                    weighted_likelihoods = tf.multiply(log_p_fixations, advantage)
                     # need to sum across time steps in the episode
                     loss_reinforce = tf.reduce_sum(weighted_likelihoods, axis=1)
                     # get the expected mean across 'episodes', i.e. the batch
                     loss_reinforce = tf.reduce_mean(loss_reinforce)
                     # negative because we actually want to maximize
                     loss_reinforce = -loss_reinforce
+
+                    # --------------------- then compute other losses --------------------------------------------------
+                    loss_baseline = tf.losses.mean_squared_error(R, baselines)
+
+                    loss_action = tf.losses.softmax_cross_entropy(tf.one_hot(lbl, depth=self.model.num_classes),
+                                                                  out.a_t)
 
                     loss_hybrid = loss_action + loss_reinforce
 
