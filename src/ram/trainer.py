@@ -456,7 +456,11 @@ class Trainer:
 
                 # apply reinforce loss to just location network
                 # p.5 of Mnih et al. 2014, "The location network $f_l$ is always trained with REINFORCE."
-                reinforce_params = self.model.location_network.variables
+                reinforce_params = [var for net in [self.model.location_network,
+                                                    self.model.glimpse_network,
+                                                    self.model.action_network,
+                                                    self.model.core_network]
+                                    for var in net.variables]
                 reinforce_grads = tape.gradient(loss_reinforce, reinforce_params)
 
                 # apply MSE loss to baseline, p.5 of Mnih et al. 2014
@@ -468,24 +472,23 @@ class Trainer:
                 # p.4 "We learn these [action, core, and network parameters] to maximize reward".
                 # p.5 "We optimize cross entropy loss to train the action network and backpropagate the
                 # gradients through the core and glimpse networks."
-                hybrid_params = [var for net in [self.model.glimpse_network,
+                action_params = [var for net in [self.model.glimpse_network,
                                                  self.model.action_network,
                                                  self.model.core_network]
                                  for var in net.variables]
-                hybrid_grads = tape.gradient(loss_hybrid, hybrid_params)
+                action_grads = tape.gradient(loss_action, action_params)
 
                 # use control_dependencies context manager to ensure weight updates from one loss
                 # don't affect other updates
-                with tf.control_dependencies([reinforce_grads, baseline_grads, hybrid_grads]):
+                with tf.control_dependencies([reinforce_grads, baseline_grads, action_grads]):
                     self.optimizers['reinforce_optimizer'].apply_gradients(
-                        zip(reinforce_grads, reinforce_params),
-                        global_step=tf.train.get_or_create_global_step())
+                        zip(reinforce_grads, reinforce_params))
                     self.optimizers['baseline_optimizer'].apply_gradients(
-                        zip(baseline_grads, baseline_params),
-                        global_step=tf.train.get_or_create_global_step())
+                        zip(baseline_grads, baseline_params))
                     self.optimizers['hybrid_optimizer'].apply_gradients(
-                        zip(hybrid_grads, hybrid_params),
-                        global_step=tf.train.get_or_create_global_step())
+                        zip(action_grads, action_params))
+
+                tf.train.get_or_create_global_step().assign_add(1)
 
                 losses_reinforce.append(loss_reinforce.numpy())
                 losses_baseline.append(loss_baseline.numpy())
