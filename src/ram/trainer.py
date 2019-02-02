@@ -482,14 +482,13 @@ class Trainer:
                 # don't affect other updates
                 with tf.control_dependencies([reinforce_grads, baseline_grads, action_grads]):
                     self.optimizers['reinforce_optimizer'].apply_gradients(
-                        zip(reinforce_grads, reinforce_params),
-                        global_step=tf.train.get_or_create_global_step())
+                        zip(reinforce_grads, reinforce_params))
                     self.optimizers['baseline_optimizer'].apply_gradients(
-                        zip(baseline_grads, baseline_params),
-                        global_step=tf.train.get_or_create_global_step())
+                        zip(baseline_grads, baseline_params))
                     self.optimizers['hybrid_optimizer'].apply_gradients(
-                        zip(action_grads, action_params),
-                        global_step=tf.train.get_or_create_global_step())
+                        zip(action_grads, action_params))
+
+                tf.train.get_or_create_global_step().assign_add(1)
 
                 losses_reinforce.append(loss_reinforce.numpy())
                 losses_baseline.append(loss_baseline.numpy())
