@@ -419,7 +419,7 @@ class Trainer:
                     R = tf.tile(R, tf.constant([1, self.model.glimpses]))
                     mean_R = tf.reduce_mean(R)
                     var_R = tf.reduce_mean(tf.square(R - mean_R))
-                    std_R = tf.square(var_R)
+                    std_R = tf.sqrt(var_R)
 
                     # convert baseline to (batch size x number of glimpses)
                     baselines = tf.stack(baselines, axis=1)
@@ -466,6 +466,7 @@ class Trainer:
                     # --------------------- then compute other losses --------------------------------------------------
                     # scale target reward values to have mean zero and std=1
                     scaled_R = (R - mean_R) / std_R
+
                     loss_baseline = tf.losses.mean_squared_error(scaled_R, baselines)
 
                     loss_action = tf.losses.softmax_cross_entropy(tf.one_hot(lbl, depth=self.model.num_classes),
