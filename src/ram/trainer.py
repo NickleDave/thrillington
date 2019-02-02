@@ -464,7 +464,9 @@ class Trainer:
                     loss_reinforce = -loss_reinforce
 
                     # --------------------- then compute other losses --------------------------------------------------
-                    loss_baseline = tf.losses.mean_squared_error(R, baselines)
+                    # scale target reward values to have mean zero and std=1
+                    scaled_R = (R - mean_R) / std_R
+                    loss_baseline = tf.losses.mean_squared_error(scaled_R, baselines)
 
                     loss_action = tf.losses.softmax_cross_entropy(tf.one_hot(lbl, depth=self.model.num_classes),
                                                                   out.a_t)
