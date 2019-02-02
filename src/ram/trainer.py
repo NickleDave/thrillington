@@ -413,14 +413,25 @@ class Trainer:
                     R = tf.cast(R, dtype=tf.float32)
                     # reshape reward to (batch size x number of glimpses)
                     # Note that, because we don't discount future reward, the return
-                    # from any time step is just the actual reward on the last time step,
+                    # from any time step is just the actual reward on the last time step.
                     # i.e. we can just tile R for t steps and subtract the baseline from that
                     R = tf.expand_dims(R, axis=1)  # add axis
                     R = tf.tile(R, tf.constant([1, self.model.glimpses]))
+                    mean_R = tf.reduce_mean(R)
+                    var_R = tf.reduce_mean(tf.square(R - mean_R))
+                    std_R = tf.square(var_R)
 
                     # convert baseline to (batch size x number of glimpses)
                     baselines = tf.stack(baselines, axis=1)
                     baselines = tf.squeeze(baselines)
+                    # rescale baselines to match statistics of current batch of Q values
+                    mean_bline = tf.reduce_mean(baselines)
+                    var_bline = tf.reduce_mean(tf.square(baselines - mean_bline))
+                    std_bline = tf.sqrt(var_bline)
+                    baselines -= mean_bline
+                    baselines /= std_bline
+                    baselines = (baselines * std_R) + mean_R
+
                     advantage = R - baselines
 
                     # convert mu and locs_for_log_like to (batch size x number of glimpses)
