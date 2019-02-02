@@ -433,6 +433,12 @@ class Trainer:
                     baselines = (baselines * std_R) + mean_R
 
                     advantage = R - baselines
+                    mean_adv = tf.reduce_mean(advantage)
+                    # also normalize advantage, to reduce variance
+                    var_adv = tf.reduce_mean(tf.square(advantage - mean_adv))
+                    std_adv = tf.sqrt(var_adv)
+                    advantage -= mean_adv
+                    advantage /= std_adv
 
                     # convert mu and locs_for_log_like to (batch size x number of glimpses)
                     mu = tf.stack(mu, axis=1)
