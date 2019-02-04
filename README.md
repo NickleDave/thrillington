@@ -1,23 +1,26 @@
 # Recurrent Models of Visual Attention
-Replication in Tensorflow of the following paper:
+Replication in Tensorflow of the following paper:  
 Mnih, Volodymyr, Nicolas Heess, and Alex Graves.  
 "Recurrent models of visual attention."  
 Advances in neural information processing systems. 2014.  
 <https://papers.nips.cc/paper/5542-recurrent-models-of-visual-attention>
 
 Based in part on the following implementations:  
-<https://github.com/kevinzakka/recurrent-visual-attention>  
-and
-<https://github.com/seann999/tensorflow_mnist_ram>  
-(MIT license: https://github.com/seann999/tensorflow_mnist_ram/blob/master/LICENSE)
+- <https://github.com/torch/rnn/blob/master/examples/recurrent-visual-attention.lua>
+  + (license: <https://github.com/torch/rnn/blob/master/LICENSE.txt>) 
+- <https://github.com/seann999/tensorflow_mnist_ram>  
+  + (MIT license: <https://github.com/seann999/tensorflow_mnist_ram/blob/master/LICENSE>)
+- <https://github.com/kevinzakka/recurrent-visual-attention>  
 
 ## installation
-`$ pip install ram`
+`$ pip install thrillington`  
+(`thrillington` because there is already a `ram` on PyPI, 
+and because <https://en.wikipedia.org/wiki/Thrillington>)
 
 ## usage
 The library can be run from the command line with a config file.
 ```
-$ ram -c ./RAM_config-2018-10-21.ini
+$ ram train ./RAM_config-2018-10-21.ini
 
 ...
 
