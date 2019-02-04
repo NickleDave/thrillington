@@ -20,7 +20,7 @@ URL = 'https://github.com/NickleDave/thrillington'
 EMAIL = 'nicholdav@gmail.com'
 AUTHOR = 'Percy "Thrills" Thrillington'
 REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.0.1a1'
+VERSION = '0.0.2a1'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
