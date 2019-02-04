@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.0.2a1] 2019-02-04
 ### Added
 - ability to use only a subset of MNIST training data and get a validation set from it
 - ability to shuffle dataset on each epoch
@@ -19,15 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - change argparser to use positional arguments `command` and `config`
   + before all arguments were "optional" (although the program would crash without them)
+- many changes to training, in attempt to reproduce original paper + reconcile different versions 
+  + currently: use pdf of Gaussian for policy gradient of location network, and 
+  normalize both baseline, target of baseline, and advantage to decrease variance and 
+  to keep gradient from exploding
 
 ### Fixed
 - fix action network and glimpse network, did not have correct number of layers
-- fix how policy gradient is calculated, now properly uses REINFORCE with baseline
-  + drawing in large part from LuaTorch implementation by Element, see:
-    - http://torch.ch/blog/2015/09/21/rmva.html
-    - https://github.com/torch/rnn
 
-## [0.1.0] - 2018-12-01
+## [0.0.1] - 2018-12-01
 ### Added
 - original version, probably closest to the [one from Kevin Zakka](https://github.com/kevinzakka/recurrent-visual-attention)
 - but in Tensorflow (Eager) instead of PyTorch
