@@ -39,7 +39,7 @@ class Tester:
                  config,
                  batch_size,
                  learning_rate,
-                 optimizer,
+                 optimizers,
                  test_data,
                  save_log,
                  replicates=1,
@@ -49,7 +49,7 @@ class Tester:
         self.config = config
         self.batch_size = batch_size
         self.learning_rate = learning_rate
-        self.optimizer = optimizer
+        self.optimizers = optimizers
 
         self.save_log = save_log  # if True, will create logfile in train method, using that method's result_dir arg
         if logger:
@@ -72,16 +72,37 @@ class Tester:
 
     @classmethod
     def from_config(cls, config, test_data, logger=None):
+        if config.train.decay_rate:
+            learning_rate = tf.train.exponential_decay(
+                learning_rate=config.train.learning_rate,
+                decay_steps=config.train.epochs,
+                decay_rate=config.train.decay_rate,
+                global_step=tf.train.get_or_create_global_step())
+        else:
+            learning_rate = config.train.learning_rate
+
+        optimizer_list = ['baseline_optimizer', 'reinforce_optimizer', 'hybrid_optimizer']
+        optimizers = {}
         if config.train.optimizer == 'momentum':
-            optimizer = tf.train.MomentumOptimizer(momentum=config.train.momentum,
-                                                   learning_rate=config.train.learning_rate)
+            for key in optimizer_list:
+                optimizers[key] = tf.train.MomentumOptimizer(momentum=config.train.momentum,
+                                                             learning_rate=learning_rate)
         elif config.train.optimizer == 'sgd':
-            optimizer = tf.train.GradientDescentOptimizer(learning_rate=config.train.learning_rate)
+            for key in optimizer_list:
+                optimizers[key] = tf.train.GradientDescentOptimizer(learning_rate=learning_rate)
+        elif config.train.optimizer == 'adam':
+            for key in optimizer_list:
+                optimizers[key] = tf.train.AdamOptimizer(learning_rate=learning_rate,
+                                                         beta1=config.train.beta1,
+                                                         beta2=config.train.beta2,
+                                                         epsilon=config.train.epsilon)
+        else:
+            raise ValueError(f'optimizer type not recognized: {config.train.optimizer}')
 
         return cls(config=config,
                    batch_size=config.train.batch_size,
                    learning_rate=config.train.learning_rate,
-                   optimizer=optimizer,
+                   optimizers=optimizers,
                    test_data=test_data,
                    save_log=config.misc.save_log,
                    replicates=config.train.replicates,
@@ -111,7 +132,7 @@ class Tester:
             self.logger.info(f'replicate {replicate} of {self.replicates}')
             self.model = ram.RAM(batch_size=self.batch_size,
                                  **attr.asdict(self.config.model))
-            self.checkpointer = tf.train.Checkpoint(optimizer=self.optimizer,
+            self.checkpointer = tf.train.Checkpoint(**self.optimizers,
                                                     model=self.model,
                                                     optimizer_step=tf.train.get_or_create_global_step())
             checkpoint_path = os.path.join(replicate_path, 'checkpoint')
