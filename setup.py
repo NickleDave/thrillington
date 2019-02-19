@@ -14,11 +14,11 @@ from shutil import rmtree
 from setuptools import find_packages, setup, Command
 
 # Package meta-data.
-NAME = 'RAM-L2M'
-DESCRIPTION = 'Gaze-like classifier based on Recurrent Models of Visual Attention by Mnih et al. 2014'
-URL = 'https://github.com/NickleDave/RAM-L2M'
+NAME = 'thrillington'
+DESCRIPTION = 'Replication of "Recurrent models of visual attention", Mnih et al. 2014'
+URL = 'https://github.com/NickleDave/thrillington'
 EMAIL = 'nicholdav@gmail.com'
-AUTHOR = 'David Nicholson'
+AUTHOR = 'Percy "Thrills" Thrillington'
 REQUIRES_PYTHON = '>=3.6.0'
 VERSION = '0.0.1a1'
 
