@@ -155,7 +155,7 @@ class Tester:
 
             for name, arr in zip(['accs', 'preds', 'true_lbl', 'sample_inds'],
                                  [accs, preds, true_lbl, sample_inds]):
-                fname = os.path.join(test_results_dir_this_replicate, name + '.py')
+                fname = os.path.join(test_results_dir_this_replicate, name + '.npy')
                 np.save(fname, arr)
 
             self.logger.info(f'mean accuracy on test data set: {np.mean(accs)}')
