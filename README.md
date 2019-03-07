@@ -48,3 +48,8 @@ For a detailed explanation of the config file format, please see [here](./doc/co
 
 ## CHANGELOG
 To see past changes and work in progress, please check out the [CHANGELOG](./doc/CHANGELOG.md).
+
+## Acknowledgments
+- Research funded by the Lifelong Learning Machines program, 
+DARPA/Microsystems Technology Office, 
+DARPA cooperative agreement HR0011-18-2-0019
