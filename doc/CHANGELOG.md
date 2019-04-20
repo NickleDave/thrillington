@@ -5,6 +5,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- use `tensorflow_probability` for distributions
+
+### Fixed
+- specifically use Normal distribution from `tensorflow_probability` in `LocationNetwork` module so that
+  backpropagation works properly through this node
+  + not clear if it fails when just using `tf.random.normal` because it's just not that easy yet to introspect 
+    gradients in Tensorflow ()although this could be a problem with the programmer)
 
 ## [0.0.2a1] 2019-02-04
 ### Added
