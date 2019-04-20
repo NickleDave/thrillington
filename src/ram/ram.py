@@ -12,6 +12,7 @@ from collections import namedtuple
 
 import tensorflow as tf
 from tensorflow.python.training.checkpointable import tracking
+import tensorflow_probability as tfp
 
 from . import modules
 
@@ -167,7 +168,7 @@ class RAM(tracking.Checkpointable):
         self.action_network = modules.ActionNetwork(num_classes)
         self.baseline = modules.BaselineNetwork()
 
-        self.initial_l_t_distrib = tf.distributions.Uniform(low=-1.0, high=1.0)
+        self.initial_l_t_distrib = tfp.distributions.Uniform(low=-1.0, high=1.0)
 
     def reset(self):
         """get initial states for h_t and l_t.
