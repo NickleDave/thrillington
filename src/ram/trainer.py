@@ -16,6 +16,7 @@ import logging
 from datetime import datetime
 
 import tensorflow as tf
+import tensorflow_probability as tfp
 import numpy as np
 from tqdm import tqdm
 import attr
@@ -446,7 +447,7 @@ class Trainer:
                     locs_for_log_like = tf.stack(locs_for_log_like, axis=1)
                     locs_for_log_like = tf.squeeze(locs_for_log_like)
 
-                    dists = tf.distributions.Normal(loc=mu, scale=self.model.location_network.loc_std)
+                    dists = tfp.distributions.Normal(loc=mu, scale=self.model.location_network.loc_std)
 
                     log_p_fixations = dists.log_prob(locs_for_log_like)
                     # assume each dimension is independent so joint probability is product of each
