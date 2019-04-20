@@ -12,6 +12,7 @@ from typing import NamedTuple
 
 import numpy as np
 import tensorflow as tf
+import tensorflow_probability as tfp
 
 
 class Glimpse(NamedTuple):
@@ -331,7 +332,7 @@ class LocationNetwork(tf.keras.Model):
             with shape (B, 2)
         """
         mu = self.fc(h_t)
-        y = tf.random_normal(mu.get_shape(), mean=mu, stddev=self.loc_std)
+        y = tfp.distributions.Normal(loc=mu, scale=self.loc_std).sample()
         # run through tanh again to bound between -1 and 1
         l_t = tf.tanh(y)
         return mu, l_t
