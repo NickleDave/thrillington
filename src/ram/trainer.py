@@ -142,8 +142,9 @@ class Trainer:
         self.save_train_inds = save_train_inds
         self.data_dirs = {}
 
-    @classmethod
-    def from_config(cls, config, train_data, val_data=None, logger=None):
+    @staticmethod
+    def _get_optimizers(config):
+        """helper function to get learning rate (scalar or function) and optimizers (dictionary)"""
         if config.train.decay_rate:
             learning_rate = tf.train.exponential_decay(
                 learning_rate=config.train.learning_rate,
@@ -170,6 +171,12 @@ class Trainer:
                                                          epsilon=config.train.epsilon)
         else:
             raise ValueError(f'optimizer type not recognized: {config.train.optimizer}')
+
+        return optimizers
+
+    @classmethod
+    def from_config(cls, config, train_data, val_data=None, logger=None):
+        optimizers = cls._get_optimizers(config)
 
         return cls(config=config,
                    batch_size=config.train.batch_size,
@@ -306,14 +313,37 @@ class Trainer:
                 self.checkpointer = tf.train.Checkpoint(**self.optimizers,
                                                         model=self.model,
                                                         optimizer_step=tf.train.get_or_create_global_step())
-                self._train_one_model()
+
+                n_nan = 0
+                MAX_NAN = 5
+                while n_nan < MAX_NAN:
+                    loss_went_nan = self._train_one_model()
+
+                    if loss_went_nan:
+                        self.logger.info(f"One of loss functions took on nan values on attempt {n_nan + 1},"
+                                         f"will try {MAX_NAN - n_nan} more times.")
+                        n_nan += 1
+
+                        # have to re-initialize model + optimizers or they'll still have nan values
+                        self.optimizers = self._get_optimizers(self.config)
+                        self.model = ram.RAM(batch_size=self.batch_size,
+                                             **attr.asdict(self.config.model))
+                        self.checkpointer = tf.train.Checkpoint(**self.optimizers,
+                                                                model=self.model,
+                                                                optimizer_step=tf.train.get_or_create_global_step())
+                    else:
+                        break
+
+                if n_nan == MAX_NAN:
+                    self.logger.info(f'Was not able to train model for replicate {replicate} '
+                                     'without one of loss functions taking on nan values.')
 
     def _train_one_model(self):
         """train one RAM model. Gets run once every replicate.
         """
-        for epoch in range(1, self.epochs+1):
+        for epoch in range(self.epochs):
             self.logger.info(
-                f'\nEpoch: {epoch}/{self.epochs} - learning rate: {self.learning_rate:.6f}'
+                f'\nEpoch: {epoch + 1}/{self.epochs} - learning rate: {self.learning_rate:.6f}'
             )
 
             # if this is an epoch on which we should save examples
@@ -325,23 +355,32 @@ class Trainer:
             else:
                 save_examples = False
 
-            mn_acc_dict, losses, mn_loss = self._train_one_epoch(current_epoch=epoch, save_examples=save_examples)
-            # violating DRY by unpacking dict into vars,
-            # because apparently format strings with dict keys blow up the PyCharm parser
-            mn_acc = mn_acc_dict['mn_acc']
-            if 'mn_val_acc' in mn_acc_dict:
-                mn_val_acc = mn_acc_dict['mn_val_acc']
-                self.logger.info(f'mean accuracy: {mn_acc}\n'
-                                 f'mean validation accuracy: {mn_val_acc}\n'
-                                 f'mean losses: {mn_loss}')
+            (mn_acc_dict,
+             losses,
+             mn_loss,
+             loss_went_nan) = self._train_one_epoch(current_epoch=epoch, save_examples=save_examples)
+
+            if loss_went_nan:
+                break
             else:
-                self.logger.info(f'mean accuracy: {mn_acc}\nmean losses: {mn_loss}')
-            self.save_checkpoint(checkpoint_path=self.data_dirs['checkpoint_path'])
-            if self.save_loss:
-                for loss_name, loss_arr in losses._asdict().items():
-                    loss_filename = os.path.join(self.data_dirs['loss_dir'],
-                                                 f'{loss_name}_epoch_{epoch}')
-                    np.save(loss_filename, loss_arr)
+                # violating DRY by unpacking dict into vars,
+                # because apparently format strings with dict keys blow up the PyCharm parser
+                mn_acc = mn_acc_dict['mn_acc']
+                if 'mn_val_acc' in mn_acc_dict:
+                    mn_val_acc = mn_acc_dict['mn_val_acc']
+                    self.logger.info(f'mean accuracy: {mn_acc}\n'
+                                     f'mean validation accuracy: {mn_val_acc}\n'
+                                     f'mean losses: {mn_loss}')
+                else:
+                    self.logger.info(f'mean accuracy: {mn_acc}\nmean losses: {mn_loss}')
+                self.save_checkpoint(checkpoint_path=self.data_dirs['checkpoint_path'])
+                if self.save_loss:
+                    for loss_name, loss_arr in losses._asdict().items():
+                        loss_filename = os.path.join(self.data_dirs['loss_dir'],
+                                                     f'{loss_name}_epoch_{epoch}')
+                        np.save(loss_filename, loss_arr)
+
+        return loss_went_nan
 
     def _train_one_epoch(self, current_epoch, save_examples=False):
         """helper function that trains for one epoch.
@@ -350,6 +389,7 @@ class Trainer:
         losses_baseline = []
         losses_action = []
         losses_hybrid = []
+        loss_is_nan = False
         accs = []
 
         tic = time.time()
@@ -475,6 +515,28 @@ class Trainer:
 
                     loss_hybrid = loss_action + loss_reinforce
 
+                loss_reinforce_np = loss_reinforce.numpy()
+                loss_baseline_np = loss_baseline.numpy()
+                loss_action_np = loss_action.numpy()
+                loss_hybrid_np = loss_hybrid.numpy()
+
+                if np.any(np.isnan(
+                        np.asarray([loss_reinforce_np,
+                                    loss_baseline_np,
+                                    loss_action_np,
+                                    loss_hybrid_np]
+                                   ))
+                ):
+                    loss_is_nan = True
+
+                if loss_is_nan:
+                    break
+
+                losses_reinforce.append(loss_reinforce_np)
+                losses_baseline.append(loss_baseline_np)
+                losses_action.append(loss_action_np)
+                losses_hybrid.append(loss_hybrid_np)
+
                 # apply reinforce loss to just location network
                 # p.5 of Mnih et al. 2014, "The location network $f_l$ is always trained with REINFORCE."
                 reinforce_params = [var for net in [self.model.location_network,
@@ -510,11 +572,6 @@ class Trainer:
                         zip(action_grads, action_params))
 
                 tf.train.get_or_create_global_step().assign_add(1)
-
-                losses_reinforce.append(loss_reinforce.numpy())
-                losses_baseline.append(loss_baseline.numpy())
-                losses_action.append(loss_action.numpy())
-                losses_hybrid.append(loss_hybrid.numpy())
 
                 # deal with examples if we are saving them
                 if save_examples:
@@ -563,47 +620,46 @@ class Trainer:
                 )
                 progress_bar.update(self.batch_size)
 
-        if save_examples:
-            for arr, stem in zip(
-                    (locs, fixations, glimpses, img_to_save, pred),
-                    ('locations', 'fixations', 'glimpses', 'images', 'predictions')
-            ):
-                arr = np.concatenate(arr)
-                file = os.path.join(self.data_dirs['examples_dir'],
-                                    f'{stem}_epoch_{current_epoch}')
-                np.save(file=file, arr=arr)
-
-        if self.save_train_inds:
-            train_inds = np.asarray(train_inds)
-            train_inds = np.squeeze(train_inds)
-            train_inds_fname = f'train_inds_epoch_{current_epoch}'
-            train_inds_fname = os.path.join(self.data_dirs['train_inds_dir'],
-                                            train_inds_fname)
-            np.save(train_inds_fname, train_inds)
-
-        if self.val_data:
-            self.logger.info('calculating validation accuracy')
-            val_accs = []
-            with tqdm(total=self.num_val_samples) as progress_bar:
-                for img, lbl, batch_train_inds in self.val_data.batch(self.batch_size):
-                    out_t_minus_1 = self.model.reset()
-                    for t in range(self.model.glimpses):
-                        out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
-                        out_t_minus_1 = out
-
-                    # Remember that action network output a_t becomes predictions at last time step
-                    predicted = tf.argmax(
-                        tf.nn.softmax(out.a_t),
-                        axis=1, output_type=tf.int32)
-                    val_acc = tf.equal(predicted, lbl)
-                    val_acc = np.sum(val_acc.numpy()) / val_acc.numpy().shape[-1] * 100
-                progress_bar.update(self.batch_size)
-                val_accs.append(val_acc)
-            mn_val_acc = np.mean(val_accs)
-
         mn_acc_dict = {'mn_acc': np.mean(accs)}
-        if self.val_data:
-            mn_acc_dict['mn_val_acc'] = mn_val_acc
+        if not loss_is_nan:
+            if save_examples:
+                for arr, stem in zip(
+                        (locs, fixations, glimpses, img_to_save, pred),
+                        ('locations', 'fixations', 'glimpses', 'images', 'predictions')
+                ):
+                    arr = np.concatenate(arr)
+                    file = os.path.join(self.data_dirs['examples_dir'],
+                                        f'{stem}_epoch_{current_epoch}')
+                    np.save(file=file, arr=arr)
+
+            if self.save_train_inds:
+                train_inds = np.asarray(train_inds)
+                train_inds = np.squeeze(train_inds)
+                train_inds_fname = f'train_inds_epoch_{current_epoch}'
+                train_inds_fname = os.path.join(self.data_dirs['train_inds_dir'],
+                                                train_inds_fname)
+                np.save(train_inds_fname, train_inds)
+
+            if self.val_data:
+                self.logger.info('calculating validation accuracy')
+                val_accs = []
+                with tqdm(total=self.num_val_samples) as progress_bar:
+                    for img, lbl, batch_train_inds in self.val_data.batch(self.batch_size):
+                        out_t_minus_1 = self.model.reset()
+                        for t in range(self.model.glimpses):
+                            out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
+                            out_t_minus_1 = out
+
+                        # Remember that action network output a_t becomes predictions at last time step
+                        predicted = tf.argmax(
+                            tf.nn.softmax(out.a_t),
+                            axis=1, output_type=tf.int32)
+                        val_acc = tf.equal(predicted, lbl)
+                        val_acc = np.sum(val_acc.numpy()) / val_acc.numpy().shape[-1] * 100
+                    progress_bar.update(self.batch_size)
+                    val_accs.append(val_acc)
+                mn_val_acc = np.mean(val_accs)
+                mn_acc_dict['mn_val_acc'] = mn_val_acc
 
         mn_loss_reinforce = np.asarray(losses_reinforce).mean()
         mn_loss_baseline = np.asarray(losses_baseline).mean()
@@ -615,4 +671,4 @@ class Trainer:
                              np.asarray(losses_action),
                              np.asarray(losses_hybrid))
         mn_loss = MeanLossTuple(mn_loss_reinforce, mn_loss_baseline, mn_loss_action, mn_losses_hybrid)
-        return mn_acc_dict, losses, mn_loss
+        return mn_acc_dict, losses, mn_loss, loss_is_nan
