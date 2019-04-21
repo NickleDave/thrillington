@@ -34,7 +34,7 @@ VALID_OPTIONS = {
         'num_examples_to_save',
         'save_loss',
         'save_train_inds',
-
+        'patience',
     ],
     'data': [
         'root_results_dir',
@@ -123,6 +123,7 @@ class TrainConfig(object):
     num_examples_to_save = attr.ib(converter=int, default=9)
     save_loss = attr.ib(converter=strtobool, default='False')
     save_train_inds = attr.ib(converter=strtobool, default='False')
+    patience = attr.ib(converter=attr.converters.optional(int), default=None)
     # user does not specify current replicate, gets changed by main()
     current_replicate = attr.ib(type=int, default=None)
 

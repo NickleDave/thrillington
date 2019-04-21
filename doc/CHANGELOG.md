@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Added
+- Trainer has `patience` attribute, number of epochs it will for accuracy to improve before 
+  stopping training early.
+
 ### Changed
 - use `tensorflow_probability` for distributions
 
