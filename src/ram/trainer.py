@@ -355,7 +355,7 @@ class Trainer:
             else:
                 save_examples = False
 
-            (mn_acc_dict,
+            (acc_dict,
              losses,
              mn_loss,
              loss_went_nan) = self._train_one_epoch(current_epoch=epoch, save_examples=save_examples)
@@ -365,14 +365,16 @@ class Trainer:
             else:
                 # violating DRY by unpacking dict into vars,
                 # because apparently format strings with dict keys blow up the PyCharm parser
-                mn_acc = mn_acc_dict['mn_acc']
-                if 'mn_val_acc' in mn_acc_dict:
-                    mn_val_acc = mn_acc_dict['mn_val_acc']
-                    self.logger.info(f'mean accuracy: {mn_acc}\n'
-                                     f'mean validation accuracy: {mn_val_acc}\n'
+                train_acc = acc_dict['train']
+                train_accs.append(train_acc)
+                if 'val' in acc_dict:
+                    val_acc = acc_dict['val']
+                    val_accs.append(val_acc)
+                    self.logger.info(f'training accuracy: {train_acc: 6.3f}\n'
+                                     f'validation accuracy: {val_acc: 6.3f}\n'
                                      f'mean losses: {mn_loss}')
                 else:
-                    self.logger.info(f'mean accuracy: {mn_acc}\nmean losses: {mn_loss}')
+                    self.logger.info(f'training accuracy: {train_acc}\nmean losses: {mn_loss}')
                 self.save_checkpoint(checkpoint_path=self.data_dirs['checkpoint_path'])
                 if self.save_loss:
                     for loss_name, loss_arr in losses._asdict().items():
@@ -620,7 +622,7 @@ class Trainer:
                 )
                 progress_bar.update(self.batch_size)
 
-        mn_acc_dict = {'mn_acc': np.mean(accs)}
+        acc_dict = {'train': np.mean(accs)}
         if not loss_is_nan:
             if save_examples:
                 for arr, stem in zip(
@@ -658,8 +660,7 @@ class Trainer:
                         val_acc = np.sum(val_acc.numpy()) / val_acc.numpy().shape[-1] * 100
                     progress_bar.update(self.batch_size)
                     val_accs.append(val_acc)
-                mn_val_acc = np.mean(val_accs)
-                mn_acc_dict['mn_val_acc'] = mn_val_acc
+                acc_dict['val'] = np.mean(val_accs)
 
         mn_loss_reinforce = np.asarray(losses_reinforce).mean()
         mn_loss_baseline = np.asarray(losses_baseline).mean()
@@ -671,4 +672,4 @@ class Trainer:
                              np.asarray(losses_action),
                              np.asarray(losses_hybrid))
         mn_loss = MeanLossTuple(mn_loss_reinforce, mn_loss_baseline, mn_loss_action, mn_losses_hybrid)
-        return mn_acc_dict, losses, mn_loss, loss_is_nan
+        return acc_dict, losses, mn_loss, loss_is_nan
