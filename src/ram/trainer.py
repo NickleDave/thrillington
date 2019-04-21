@@ -47,6 +47,7 @@ class Trainer:
                  train_data,
                  val_data=None,
                  shuffle_each_epoch=True,
+                 patience=None,
                  replicates=1,
                  restore=False,
                  checkpoint_prefix='ckpt',
@@ -122,6 +123,8 @@ class Trainer:
                 seed=None,
                 reshuffle_each_iteration=True)
 
+        self.patience = patience
+
         # are we restoring a previous model?
         self.restore = restore
         # or are we training for a certain number of replicates?
@@ -186,6 +189,7 @@ class Trainer:
                    train_data=train_data,
                    val_data=val_data,
                    shuffle_each_epoch=config.train.shuffle_each_epoch,
+                   patience=config.train.patience,
                    replicates=config.train.replicates,
                    restore=config.train.restore,
                    checkpoint_prefix=config.train.checkpoint_prefix,
@@ -339,8 +343,13 @@ class Trainer:
                                      'without one of loss functions taking on nan values.')
 
     def _train_one_model(self):
-        """train one RAM model. Gets run once every replicate.
-        """
+        """train one RAM model. Gets run once every replicate."""
+        if self.patience:
+            max_acc = 0
+            train_accs = []
+            if self.val_data:
+                val_accs = []
+
         for epoch in range(self.epochs):
             self.logger.info(
                 f'\nEpoch: {epoch + 1}/{self.epochs} - learning rate: {self.learning_rate:.6f}'
@@ -376,11 +385,30 @@ class Trainer:
                 else:
                     self.logger.info(f'training accuracy: {train_acc}\nmean losses: {mn_loss}')
                 self.save_checkpoint(checkpoint_path=self.data_dirs['checkpoint_path'])
+
                 if self.save_loss:
                     for loss_name, loss_arr in losses._asdict().items():
                         loss_filename = os.path.join(self.data_dirs['loss_dir'],
                                                      f'{loss_name}_epoch_{epoch}')
                         np.save(loss_filename, loss_arr)
+
+            if self.patience:
+                if 'val' in acc_dict:
+                    if acc_dict['val'] > max_acc:
+                        max_acc = acc_dict['val']
+                    if np.all(max_acc > np.asarray(val_accs[-self.patience:])):
+                        self.logger.info(f'patience is set to {self.patience}, and accuracy on validation set has not'
+                                         f' improved in {self.patience} epochs; stopping training.')
+                        self.save_checkpoint(checkpoint_path=self.data_dirs['checkpoint_path'])
+                        break
+                else:
+                    if acc_dict['train'] > max_acc:
+                        max_acc = acc_dict['val']
+                    if np.all(max_acc > np.asarray(train_accs[-self.patience:])):
+                        self.logger.info(f'patience is set to {self.patience}, and accuracy on training set has not'
+                                         f' improved in {self.patience} epochs; stopping training.')
+                        self.save_checkpoint(checkpoint_path=self.data_dirs['checkpoint_path'])
+                        break
 
         return loss_went_nan
 
