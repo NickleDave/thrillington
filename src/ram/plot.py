@@ -1,18 +1,10 @@
 import os
-import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import matplotlib.patches as patches
 
-
-def _denormalize(locations, img_height, img_width):
-    """helper function that converts locations from
-    normalized co-ordinates"""
-    for glimpse in range(locations.shape[0]):
-        locations[glimpse, :, 0] = ((locations[glimpse, :, 0] + 1) / 2) * img_height
-        locations[glimpse, :, 1] = ((locations[glimpse, :, 1] + 1) / 2) * img_width
-    return locations
+from .utils import denormalize_img
 
 
 def bounding_box(x, y, x_size, y_size, color='w'):
@@ -24,62 +16,100 @@ def bounding_box(x, y, x_size, y_size, color='w'):
     return rect
 
 
-def plot(epoch, patch_size=(8, 8), glimpses_filename=None, locations_filename=None,
-         images_filename=None, examples_dir=None, plot_dir=None):
-    """plot glimpses + locations"""
-    if glimpses_filename is None:
-        glimpses_filename = f"glimpses_epoch_{epoch}"
-    if locations_filename is None:
-        locations_filename = f"locations_epoch_{epoch}"
-    if images_filename is None:
-        images_filename = f"images_epoch_{epoch}"
+def examples(fixations, images, patch_sizes,
+             predictions=None, glimpses=None, save_as=None,
+             denormalize_imgs=False):
+    """make animation of examples with fixations shown as a bounding box on images, and if provided,
+    actual glimpses seen by network, as well as predictions output after last glimpse
 
-    if examples_dir:
-        glimpses_filename = os.path.join(examples_dir, glimpses_filename)
-        locations_filename = os.path.join(examples_dir, locations_filename)
-        images_filename = os.path.join(examples_dir, images_filename)
+    Parameters
+    ----------
+    fixations : numpy.ndarray
+        containing fixations of RAM
+    images : numpy.ndarray
+        containing images shown to RAM
+    patch_sizes : list
+        of patch sizes
+    predictions : numpy.ndarray
+        containing predictions made by RAM
+    glimpses : numpy.ndarray
+        containing glimpses extracted by RAM
+    save_as : str
+        path and basename to use when saving animation. Default is None, in which case animation is not saved.
+    denormalize_imgs : bool
+        if True, convert images back to RGB from normalized (mean 0, divided by standard deviation)
 
-    glimpses = np.load(glimpses_filename)
-    locations = np.load(locations_filename)
-    images = np.load(images_filename)
+    Returns
+    -------
+    None
+    """
+    if denormalize_imgs:
+        images = denormalize_img(images)
+        if glimpses:
+            glimpses = denormalize_img(glimpses)
 
     # grab useful params
-    num_anims = locations.shape[0]
+    # one frame for each 'glimpse' / fixation
+    num_frames = fixations.shape[1]
     num_cols = images.shape[0]
 
-    # denormalize coordinates
-    coords = _denormalize(locations=locations,
-                          img_height=images.shape[1],
-                          img_width=images.shape[2])
+    if glimpses:
+        glimpse_rows = len(patch_sizes)
+        num_rows = glimpse_rows + 1  # + 1 is top row with input images
+    else:
+        num_rows = 1
 
-    figure, axes = plt.subplots(nrows=1, ncols=num_cols)
+    figure, axes = plt.subplots(nrows=num_rows, ncols=num_cols)
+    if axes.ndim == 1:
+        axes = axes[np.newaxis, :]
 
-    # plot base image
-    for j, ax in enumerate(axes.flat):
-        ax.imshow(images[j].squeeze(), cmap="Greys_r")
-        ax.get_xaxis().set_visible(False)
-        ax.get_yaxis().set_visible(False)
+    # used by ArtistAnimation, list of lists (of artists per each frame)
+    artists_list = []
 
-    def update_data(i):
-        color = 'r'
-        co = coords[i]
-        for j, ax in enumerate(axes.flat):
-            for p in ax.patches:
-                p.remove()
-            c = co[j]
-            rect = bounding_box(
-                c[0], c[1], patch_size[0], patch_size[1], color
-            )
-            ax.add_patch(rect)
+    for frame in range(num_frames):
+        artists_this_frame = []
+
+        for j, ax in enumerate(axes[0, :].flat):
+            im = ax.imshow(images[j].squeeze(), animated=True)
+            ax.get_xaxis().set_ticks([])
+            ax.get_yaxis().set_ticks([])
+            artists_this_frame.append(im)
+
+        for j, ax in enumerate(axes[0, :].flat):
+            coords = fixations[j, frame]
+            for patch_size in patch_sizes:
+                rect = bounding_box(
+                    coords[0], coords[1],
+                    patch_size[0], patch_size[1],
+                    color='blue'
+                )
+                ax.add_patch(rect)
+                artists_this_frame.append(rect)
+
+        if frame == num_frames - 1:  # if last frame
+            if predictions is not None:  # then plot them
+                for j, ax in enumerate(axes[0, :].flat):
+                    text = ax.set_xlabel(predictions[j])
+                    artists_this_frame.append(text)
+
+        if glimpses:
+            for glimpse_patch in range(len(patch_sizes)):
+                row = glimpse_patch + 1
+                for j, ax in enumerate(axes[row, :].flat):
+                    im = ax.imshow(glimpses[j, frame, glimpse_patch].squeeze(),
+                                   animated=True)
+                    ax.get_xaxis().set_visible(False)
+                    ax.get_yaxis().set_visible(False)
+                    artists_this_frame.append(im)
+
+        artists_list.append(artists_this_frame)
 
     # animate
-    anim = animation.FuncAnimation(
-        figure, update_data, frames=num_anims, interval=500, repeat=True
+    anim = animation.ArtistAnimation(
+        figure, artists_list, interval=500, blit=True,
+        repeat=True, repeat_delay=1000
     )
 
     # save as mp4
-    name = 'epoch_{}.mp4'.format(epoch)
-    if plot_dir:
-        name = os.path.join(plot_dir, name)
-    anim.save(name, extra_args=['-vcodec', 'h264', '-pix_fmt', 'yuv420p'])
-
+    if save_as:
+        anim.save(save_as)
