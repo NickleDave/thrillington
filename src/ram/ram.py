@@ -231,8 +231,3 @@ class RAM(tracking.Checkpointable):
         b_t = self.baseline.forward(h_t)
         a_t = self.action_network.forward(h_t)
         return StateAndMeta(glimpse.rho, glimpse.fixations, h_t, mu, l_t, a_t, b_t)
-
-
-
-
-
