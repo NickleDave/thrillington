@@ -118,7 +118,7 @@ class Tester:
         else:
             raise ValueError(f'no checkpoint found in checkpoint path: {checkpoint_path}')
 
-    def test(self, results_dir, save_examples=False, num_examples_to_save=None, test_examples_dir=None):
+    def test(self, results_dir, save_examples=False, num_examples_to_save=None):
         """compute accuracy of trained RAM models on test data set"""
         if not os.path.isdir(results_dir):
             raise NotADirectoryError(f"Couldn't find directory with results: {results_dir}")
@@ -140,9 +140,7 @@ class Tester:
 
             test_results_dir_this_replicate = os.path.join(test_results_dir, f'replicate_{replicate}')
             os.makedirs(test_results_dir_this_replicate)
-            if save_examples and test_examples_dir is None:
-                # if save examples is True but test_examples_dir not specified
-                # (e.g. because called by cli), then make test_examples_dir
+            if save_examples:
                 test_examples_dir = os.path.join(test_results_dir_this_replicate, 'examples')
                 os.makedirs(test_examples_dir)
 
