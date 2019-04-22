@@ -328,6 +328,18 @@ class Trainer:
                                          f"will try {MAX_NAN - n_nan} more times.")
                         n_nan += 1
 
+                        # remove checkpoints, examples, etc. from model whose loss went nan
+                        for data_dir_name, data_dir_path in self.data_dirs.items():
+                            if data_dir_name == 'checkpoint_path':
+                                data_dir_path = os.path.dirname(data_dir_path)
+                            for file in os.listdir(data_dir_path):
+                                file_path = os.path.join(data_dir_path, file)
+                                try:
+                                    if os.path.isfile(file_path):
+                                        os.remove(file_path)
+                                except Exception as e:
+                                    print(e)
+
                         # have to re-initialize model + optimizers or they'll still have nan values
                         self.optimizers = self._get_optimizers(self.config)
                         self.model = ram.RAM(batch_size=self.batch_size,
