@@ -104,10 +104,10 @@ class GlimpseSensor(tf.keras.Model):
 
                 # compute top left corner of patch.
                 # note we add 'size' to compensate for padding
-                patch_x = fixations[ind, 0] - (size // 2) + size
-                patch_y = fixations[ind, 1] - (size // 2) + size
+                patch_y = fixations[ind, 0] - (size // 2) + size
+                patch_x = fixations[ind, 1] - (size // 2) + size
                 patch = tf.slice(img_padded,
-                                 begin=tf.stack([patch_x, patch_y, 0]),
+                                 begin=tf.stack([patch_y, patch_x, 0]),
                                  size=tf.stack([size, size, C])
                                  )
                 if size == self.g_w:
