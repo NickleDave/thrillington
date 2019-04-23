@@ -18,7 +18,8 @@ def bounding_box(x, y, x_size, y_size, color='w'):
 
 def examples(fixations, images, patch_sizes,
              predictions=None, glimpses=None, save_as=None,
-             denormalize_imgs=False):
+             denormalize_imgs=False, class_to_plot=None,
+             cmap='Greys'):
     """make animation of examples with fixations shown as a bounding box on images, and if provided,
     actual glimpses seen by network, as well as predictions output after last glimpse
 
@@ -70,7 +71,7 @@ def examples(fixations, images, patch_sizes,
         artists_this_frame = []
 
         for j, ax in enumerate(axes[0, :].flat):
-            im = ax.imshow(images[j].squeeze(), animated=True)
+            im = ax.imshow(images[j].squeeze(), animated=True, cmap=cmap)
             ax.get_xaxis().set_ticks([])
             ax.get_yaxis().set_ticks([])
             artists_this_frame.append(im)
