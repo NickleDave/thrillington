@@ -24,7 +24,7 @@ VERSION = '0.0.2a1'
 
 # What packages are required for this module to be executed?
 REQUIRED = [
-    'numpy', 'tensorflow', 'tensorflow_probability', 'tqdm', 'attrs'
+    'numpy', 'matplotlib', 'tensorflow', 'tensorflow_probability', 'tqdm', 'attrs'
 ]
 
 # What packages are optional?
