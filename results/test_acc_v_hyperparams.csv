@@ -1,3 +1,7 @@
-,config,std,lr,test_acc
-0,RAM_config_2019-04-20-2317-MNIST.ini,0.5,0.01,"[nan, nan, 89.11]"
-1,RAM_config_2019-04-21-1925-MNIST.ini,0.15,0.001,"[89.51, 90.03]"
+config,lr,std,test_acc
+RAM_config_2019-04-20-2317-MNIST.ini,0.01,0.5,[  nan   nan 89.11]
+RAM_config_2019-04-21-1925-MNIST.ini,0.001,0.15,[89.51 90.03]
+RAM_config_2019-04-20-2315-MNIST.ini,0.001,1.0,[73.8]
+RAM_config_2019-04-20-1549-MNIST.ini,0.001,0.5,[  nan 78.07]
+RAM_config_2019-04-22-1519-MNIST.ini,0.01,0.1,[91.95]
+RAM_config_2019-04-22-1724-MNIST.ini,0.01,0.2,[93.97]
