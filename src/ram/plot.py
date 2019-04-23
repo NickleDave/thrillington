@@ -46,7 +46,7 @@ def examples(fixations, images, patch_sizes,
     """
     if denormalize_imgs:
         images = denormalize_img(images)
-        if glimpses:
+        if glimpses is not None:
             glimpses = denormalize_img(glimpses)
 
     # grab useful params
@@ -54,7 +54,7 @@ def examples(fixations, images, patch_sizes,
     num_frames = fixations.shape[1]
     num_cols = images.shape[0]
 
-    if glimpses:
+    if glimpses is not None:
         glimpse_rows = len(patch_sizes)
         num_rows = glimpse_rows + 1  # + 1 is top row with input images
     else:
@@ -93,7 +93,7 @@ def examples(fixations, images, patch_sizes,
                     text = ax.set_xlabel(predictions[j])
                     artists_this_frame.append(text)
 
-        if glimpses:
+        if glimpses is not None:
             for glimpse_patch in range(len(patch_sizes)):
                 row = glimpse_patch + 1
                 for j, ax in enumerate(axes[row, :].flat):
