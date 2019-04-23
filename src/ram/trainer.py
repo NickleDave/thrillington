@@ -443,8 +443,9 @@ class Trainer:
             locs = []
             fixations = []
             glimpses = []
-            img_to_save = []
+            img_for_examples = []
             pred = []
+            lbl_for_examples = []
             num_examples_saved = 0
 
         with tqdm(total=self.num_train_samples) as progress_bar:
@@ -631,7 +632,8 @@ class Trainer:
                             fixations.append(fixations_t)
                             glimpses.append(glimpses_t)
                             pred.append(predicted)
-                            img_to_save.append(img)
+                            img_for_examples.append(img)
+                            lbl_for_examples.append(lbl)
 
                             num_examples_saved = num_examples_saved + num_samples
 
@@ -642,7 +644,8 @@ class Trainer:
                             fixations.append(fixations_t[:num_needed])
                             glimpses.append(glimpses_t[:num_needed])
                             pred.append(predicted[:num_needed])
-                            img_to_save.append(img[:num_needed])
+                            img_for_examples.append(img[:num_needed])
+                            lbl_for_examples.append(lbl_for_examples[:num_needed])
 
                             num_examples_saved = num_examples_saved + num_needed
 
@@ -666,8 +669,8 @@ class Trainer:
         if not loss_is_nan:
             if save_examples:
                 for arr, stem in zip(
-                        (locs, fixations, glimpses, img_to_save, pred),
-                        ('locations', 'fixations', 'glimpses', 'images', 'predictions')
+                        (locs, fixations, glimpses, img_for_examples, pred, lbl_for_examples),
+                        ('locations', 'fixations', 'glimpses', 'images', 'predictions', 'labels')
                 ):
                     arr = np.concatenate(arr)
                     file = os.path.join(self.data_dirs['examples_dir'],
