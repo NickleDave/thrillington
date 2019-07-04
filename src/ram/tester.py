@@ -45,6 +45,7 @@ class Tester:
                  test_data,
                  test_l0,
                  save_log,
+                 num_mc_episode=10,
                  replicates=1,
                  logger=None,
                  ):
@@ -63,6 +64,7 @@ class Tester:
             self.logger.addHandler(logging.StreamHandler(sys.stdout))
 
         self.test_l0 = test_l0
+        self.num_mc_episode = num_mc_episode
 
         self.test_data = test_data.dataset
         self.logger.info(f'Test data: {self.test_data}')
@@ -111,6 +113,7 @@ class Tester:
                    test_data=test_data,
                    test_l0=config.test.test_l0,
                    save_log=config.misc.save_log,
+                   num_mc_episode=config.misc.num_mc_episode,
                    replicates=config.train.replicates,
                    logger=logger)
 
@@ -165,7 +168,6 @@ class Tester:
             self.logger.info(f'mean accuracy on test data set: {np.mean(accs)}')
 
     def _test_one_model(self, save_examples, num_examples_to_save, test_examples_dir):
-
         accs = []
         sample_inds = []
         preds = []
@@ -182,43 +184,59 @@ class Tester:
 
         tic = time.time()
 
-        with tqdm(total=self.num_test_samples) as progress_bar:
+        total = self.num_test_samples * self.num_mc_episode
+        self.logger.info(f'measuring accuracy on {self.num_test_samples}, with {self.num_mc_episode} episodes for each '
+                         f'sample, for a total of {total} iterations')
+        with tqdm(total=total) as progress_bar:
             batch = 0
             for img, lbl, batch_sample_inds in self.test_data.batch(self.batch_size):
                 sample_inds.append(batch_sample_inds)
                 batch += 1
 
-                out_t_minus_1 = self.model.reset()
-                if self.test_l0 is not None:
-                    l_t = np.broadcast_to(self.test_l0, shape=(self.batch_size, 2))
-                    out_t_minus_1 = StateAndMeta(None, None, out_t_minus_1.h_t, None, l_t, None, None)
-
-                if save_examples:
-                    if num_examples_saved < num_examples_to_save:
-                        locs_t = []
-                        fixations_t = []
-                        glimpses_t = []
-
-                for t in range(self.model.glimpses):
-                    out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
+                for ep in range(self.num_mc_episode):
+                    out_t_minus_1 = self.model.reset()
+                    if self.test_l0 is not None:
+                        l_t = np.broadcast_to(self.test_l0, shape=(self.batch_size, 2))
+                        out_t_minus_1 = StateAndMeta(None, None, out_t_minus_1.h_t, None, l_t, None, None)
 
                     if save_examples:
                         if num_examples_saved < num_examples_to_save:
-                            locs_t.append(out.l_t.numpy())
-                            fixations_t.append(out.fixations)
-                            glimpses_t.append(out.rho.numpy())
+                            # initialize lists we'll append to for this run through t time steps
+                            # (across batch of size b)
+                            # this gets overwritten if Monte Carlo sampling > 1, but we'll just ignore that for now
+                            locs_t = []
+                            fixations_t = []
+                            glimpses_t = []
 
-                    out_t_minus_1 = out
+                    for t in range(self.model.glimpses):
+                        out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
 
-                # repeat column vector n times where n = glimpses
-                # calculate reward.
-                # Remember that action network output a_t becomes predictions at last time step
-                predicted = tf.argmax(out.a_t, axis=1, output_type=tf.int32)
-                preds.append(predicted)
-                R = tf.equal(predicted, lbl)
-                acc = np.sum(R.numpy()) / R.numpy().shape[-1] * 100
-                accs.append(acc)
-                true_lbl.append(lbl)
+                        if save_examples:
+                            if num_examples_saved < num_examples_to_save:
+                                locs_t.append(out.l_t.numpy())
+                                fixations_t.append(out.fixations)
+                                glimpses_t.append(out.rho.numpy())
+
+                        out_t_minus_1 = out
+
+                    # repeat column vector n times where n = glimpses
+                    # calculate reward.
+                    # Remember that action network output a_t becomes predictions at last time step
+                    predicted = tf.argmax(out.a_t, axis=1, output_type=tf.int32)
+                    preds.append(predicted)
+                    R = tf.equal(predicted, lbl)
+                    acc = np.sum(R.numpy()) / R.numpy().shape[-1] * 100
+                    accs.append(acc)
+                    true_lbl.append(lbl)
+
+                    toc = time.time()
+
+                    progress_bar.set_description(
+                        (
+                            "{:.1f}s - acc: {:.3f}".format((toc - tic), acc)
+                        )
+                    )
+                    progress_bar.update(self.batch_size)
 
                 # deal with examples if we are saving them
                 if save_examples:
@@ -252,15 +270,6 @@ class Tester:
                             lbl_for_examples.append(lbl[:num_needed])
 
                             num_examples_saved = num_examples_saved + num_needed
-
-                toc = time.time()
-
-                progress_bar.set_description(
-                    (
-                        "{:.1f}s - acc: {:.3f}".format((toc - tic), acc)
-                    )
-                )
-                progress_bar.update(self.batch_size)
 
         if save_examples:
             for arr, stem in zip(
