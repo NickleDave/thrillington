@@ -8,18 +8,20 @@ https://github.com/seann999/tensorflow_mnist_ram
    Advances in neural information processing systems. 2014.
    https://arxiv.org/abs/1406.6247
 """
+from datetime import datetime
+from collections import namedtuple
+import json
+import logging
 import os
 import sys
 import time
-from collections import namedtuple
-import logging
-from datetime import datetime
 
+import attr
+import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
-import numpy as np
 from tqdm import tqdm
-import attr
+
 
 from . import ram
 
@@ -44,8 +46,10 @@ class Trainer:
                  learning_rate,
                  epochs,
                  optimizers,
-                 train_data,
-                 val_data=None,
+                 dataset_module,
+                 paths_dict_fname,
+                 use_val=True,
+                 seed=None,
                  shuffle_each_epoch=True,
                  patience=None,
                  replicates=1,
@@ -62,24 +66,26 @@ class Trainer:
 
         Parameters
         ----------
-        config : namedtuple
-            as returned by ram.utils.parse_config.
-        train_data : ram.dataset.Dataset
-            Training data.
-            Named tuple with fields:
-                dataset : tensorflow Dataset object with images and labels / correct action
-                num_samples : number of samples, int
-            E.g., the MNIST training set,
-            returned by calling ram.dataset.train.
-        val_data : ram.dataset.Dataset
-            Validation data. Default is None (in which case a validation score is not computed).
+        config
+        batch_size
+        learning_rate
+        epochs
+        optimizers
+        dataset_module
+        paths_dict
+        seed
+        shuffle_each_epoch
+        patience
+        replicates
+        restore
+        checkpoint_prefix
+        save_log
+        save_examples_every
+        num_examples_to_save
+        save_loss
+        save_train_inds
+        logger
         """
-        if train_data.num_samples % batch_size != 0:
-            raise ValueError(f'Number of training samples, {train_data.num_samples}, '
-                             f'is not evenly divisible by batch size, {config.train.batch_size}.\n'
-                             f'This will cause an error when training network;'
-                             f'please change either so that data.num_samples % config.train.batch_size == 0:')
-
         self.save_log = save_log  # if True, will create logfile in train method, using that method's result_dir arg
         if logger:
             self.logger = logger
@@ -91,20 +97,11 @@ class Trainer:
         self.config = config
         self.logger.info(f'Trainer config: {config}')
 
-        self.train_data = train_data.dataset
-        self.logger.info(f'Training data: {self.train_data}')
-        self.num_train_samples = train_data.num_samples
-        self.logger.info(f'Number of samples in training data: {self.num_train_samples}')
+        self.paths_dict_fname = paths_dict_fname
+        self.dataset_module = dataset_module
+        self.seed = seed
 
-        if val_data:
-            self.val_data = val_data.dataset
-            self.logger.info(f'Validation data: {self.val_data}')
-            self.num_val_samples = val_data.num_samples
-            self.logger.info(f'Number of samples in validation data: {self.num_val_samples}')
-        else:
-            self.val_data = None
-            self.logger.info(f'Validation data: {self.val_data}')
-            self.num_val_samples = None
+        self.use_val = use_val
 
         # hyperparams that will be common across replicates
         self.batch_size = batch_size
@@ -117,11 +114,6 @@ class Trainer:
         self.logger.info(f'Optimizers : {self.optimizers}')
 
         self.shuffle_each_epoch = shuffle_each_epoch
-        if self.shuffle_each_epoch:
-            self.train_data = self.train_data.shuffle(
-                buffer_size=self.num_train_samples,
-                seed=None,
-                reshuffle_each_iteration=True)
 
         self.patience = patience
 
@@ -133,6 +125,12 @@ class Trainer:
         self.checkpoint_prefix = checkpoint_prefix
 
         # below get replaced with an object when we start training
+        self.train_data = None
+        self.num_train_samples = None
+        self.val_data = None
+        self.num_val_samples = None
+        self.sess = None
+        self.graph = None
         self.checkpointer = None
         self.model = None
 
@@ -178,7 +176,28 @@ class Trainer:
         return optimizers
 
     @classmethod
-    def from_config(cls, config, train_data, val_data=None, logger=None):
+    def from_config(cls, config, dataset_module, paths_dict_fname, logger=None):
+        """factory method that makes a Trainer instance
+
+        Parameters
+        ----------
+        config : ram.config.Config
+            returned by parse_config
+        dataset_module : module
+            passed as an argument, because Python lets you do this.
+            e.g. dataset_module = ram.dataset.mnist
+        paths_dict_fname : str
+            filename of .json file that contain full paths to data files, e.g. images,
+            returned by dataset_module.prep
+        logger : logging.logger
+            logger instance; this argument is used by the command-line interface.
+            Default is None, in which case Trainer will create a logger.
+
+        Returns
+        -------
+        trainer : ram.trainer.Trainer
+            instance of Trainer
+        """
         optimizers = cls._get_optimizers(config)
 
         return cls(config=config,
@@ -186,8 +205,9 @@ class Trainer:
                    learning_rate=config.train.learning_rate,
                    epochs=config.train.epochs,
                    optimizers=optimizers,
-                   train_data=train_data,
-                   val_data=val_data,
+                   seed=config.misc.random_seed,
+                   dataset_module=dataset_module,
+                   paths_dict_fname=paths_dict_fname,
                    shuffle_each_epoch=config.train.shuffle_each_epoch,
                    patience=config.train.patience,
                    replicates=config.train.replicates,
@@ -254,6 +274,47 @@ class Trainer:
 
         self.data_dirs = data_dirs
 
+    def _load_datasets(self):
+        """has to be done within context of a graph, hence helper function"""
+        # first load training and validation data (if using);
+        # have to do this w/in same graph as model
+        with open(self.paths_dict_fname) as fp:
+            paths_dict = json.load(fp)
+
+        if self.use_val:
+            self.logger.info(f'Will use validation data set')
+            train_data, val_data = self.dataset_module.get_split(paths_dict, setname=['train', 'val'])
+        else:
+            train_data = self.dataset_module.get_split(paths_dict, setname=['train'])
+            val_data = None
+
+        self.train_data = train_data.dataset
+        self.logger.info(f'Training data: {self.train_data}')
+        self.num_train_samples = train_data.num_samples
+        self.logger.info(f'Number of samples in training data: {self.num_train_samples}')
+
+        if train_data.num_samples % self.batch_size != 0:
+            raise ValueError(f'Number of training samples, {train_data.num_samples}, '
+                             f'is not evenly divisible by batch size, {config.train.batch_size}.\n'
+                             'This will cause an error when training network;'
+                             'please change either so that the total number of samples in the training data'
+                             'data.num_samples can be evenly divided by the batch size')
+
+        if self.shuffle_each_epoch:
+            self.train_data = self.train_data.shuffle(
+                buffer_size=self.num_train_samples,
+                seed=self.seed,
+                reshuffle_each_iteration=True)
+
+        if self.use_val:
+            self.logger.info(f'Will use validation set')
+            self.logger.info(f'Validation data: {self.val_data}')
+            self.val_data = val_data.dataset
+            self.num_val_samples = val_data.num_samples
+            self.logger.info(f'Number of samples in validation data: {self.num_val_samples}')
+        else:
+            self.logger.info(f'Not using validation set')
+
     def train(self,
               results_dir,
               checkpoint_path=None):
@@ -286,23 +347,33 @@ class Trainer:
                 self.logger.addHandler(logging.FileHandler(logfile_name))
                 self.logger.info('Logging results to {}'.format(results_dir))
 
+        # either restore model or train new models
         if self.restore:
             if checkpoint_path is None:
                 raise ValueError('must specify checkpoint_path when restoring model')
-
-            self.logger.info(f'restoring model and optimizer from checkpoint: {checkpoint_path}')
             self._name_and_create_data_dirs(results_dir)
-            self.model = ram.RAM(batch_size=self.batch_size,
-                                 **attr.asdict(self.config.model))
-            self.checkpointer = tf.train.Checkpoint(**self.optimizers,
-                                                    model=self.model,
-                                                    optimizer_step=tf.train.get_or_create_global_step())
-            self.load_checkpoint(checkpoint_path)
-            self._train_one_model()
+
+            tf.reset_default_graph()
+            self.graph = tf.Graph()
+
+            with self.graph:
+                tf.random.set_random_seed(self.seed)
+                self._load_datasets()
+
+                self.logger.info(f'restoring model and optimizer from checkpoint: {checkpoint_path}')
+
+                self.model = ram.RAM(batch_size=self.batch_size,
+                                     **attr.asdict(self.config.model))
+                self.checkpointer = tf.train.Checkpoint(**self.optimizers,
+                                                        model=self.model,
+                                                        optimizer_step=tf.train.get_or_create_global_step())
+
+                self.load_checkpoint(checkpoint_path)
+                self._train_one_model()
+
         else:
             for replicate in range(1, self.replicates + 1):
                 self.logger.info(f"Starting replicate {replicate} of {self.replicates}\n")
-
                 replicate_results_dir = os.path.join(results_dir, f'replicate_{replicate}')
                 self.logger.info(f"Saving results in {replicate_results_dir}")
                 if not os.path.isdir(replicate_results_dir):
@@ -310,49 +381,56 @@ class Trainer:
 
                 self._name_and_create_data_dirs(replicate_results_dir)
 
-                # apply model config
-                self.model = ram.RAM(batch_size=self.batch_size,
-                                     **attr.asdict(self.config.model))
-                self.logger.info(f'Model that will be trained: {self.model}')
-                self.checkpointer = tf.train.Checkpoint(**self.optimizers,
-                                                        model=self.model,
-                                                        optimizer_step=tf.train.get_or_create_global_step())
+                tf.reset_default_graph()
+                self.graph = tf.Graph()
 
-                n_nan = 0
-                MAX_NAN = 5
-                while n_nan < MAX_NAN:
-                    loss_went_nan = self._train_one_model()
+                with self.graph.as_default():
+                    tf.random.set_random_seed(self.seed)
 
-                    if loss_went_nan:
-                        self.logger.info(f"One of loss functions took on nan values on attempt {n_nan + 1},"
-                                         f"will try {MAX_NAN - n_nan} more times.")
-                        n_nan += 1
+                    self._load_datasets()
 
-                        # remove checkpoints, examples, etc. from model whose loss went nan
-                        for data_dir_name, data_dir_path in self.data_dirs.items():
-                            if data_dir_name == 'checkpoint_path':
-                                data_dir_path = os.path.dirname(data_dir_path)
-                            for file in os.listdir(data_dir_path):
-                                file_path = os.path.join(data_dir_path, file)
-                                try:
-                                    if os.path.isfile(file_path):
-                                        os.remove(file_path)
-                                except Exception as e:
-                                    print(e)
+                    self.model = ram.RAM(batch_size=self.batch_size,
+                                         **attr.asdict(self.config.model))
+                    self.logger.info(f'Model that will be trained: {self.model}')
+                    self.checkpointer = tf.train.Checkpoint(**self.optimizers,
+                                                            model=self.model,
+                                                            optimizer_step=tf.train.get_or_create_global_step())
 
-                        # have to re-initialize model + optimizers or they'll still have nan values
-                        self.optimizers = self._get_optimizers(self.config)
-                        self.model = ram.RAM(batch_size=self.batch_size,
-                                             **attr.asdict(self.config.model))
-                        self.checkpointer = tf.train.Checkpoint(**self.optimizers,
-                                                                model=self.model,
-                                                                optimizer_step=tf.train.get_or_create_global_step())
-                    else:
-                        break
+                    n_nan = 0
+                    MAX_NAN = 5
+                    while n_nan < MAX_NAN:
+                        loss_went_nan = self._train_one_model()
 
-                if n_nan == MAX_NAN:
-                    self.logger.info(f'Was not able to train model for replicate {replicate} '
-                                     'without one of loss functions taking on nan values.')
+                        if loss_went_nan:
+                            self.logger.info(f"One of loss functions took on nan values on attempt {n_nan + 1},"
+                                             f"will try {MAX_NAN - n_nan} more times.")
+                            n_nan += 1
+
+                            # remove checkpoints, examples, etc. from model whose loss went nan
+                            for data_dir_name, data_dir_path in self.data_dirs.items():
+                                if data_dir_name == 'checkpoint_path':
+                                    data_dir_path = os.path.dirname(data_dir_path)
+                                for file in os.listdir(data_dir_path):
+                                    file_path = os.path.join(data_dir_path, file)
+                                    try:
+                                        if os.path.isfile(file_path):
+                                            os.remove(file_path)
+                                    except Exception as e:
+                                        print(e)
+
+                            # have to re-initialize model + optimizers or they'll still have nan values
+                            self.optimizers = self._get_optimizers(self.config)
+                            self.model = ram.RAM(batch_size=self.batch_size,
+                                                 **attr.asdict(self.config.model))
+                            self.checkpointer = tf.train.Checkpoint(**self.optimizers,
+                                                                    model=self.model,
+                                                                    optimizer_step=tf.train.get_or_create_global_step())
+                        else:
+                            break
+
+                    if n_nan == MAX_NAN:
+                        self.logger.info(f'Was not able to train model for replicate {replicate} '
+                                         'without one of loss functions taking on nan values.')
 
     def _train_one_model(self):
         """train one RAM model. Gets run once every replicate."""
@@ -362,65 +440,67 @@ class Trainer:
             if self.val_data:
                 val_accs = []
 
-        for epoch in range(self.epochs):
-            self.logger.info(
-                f'\nEpoch: {epoch + 1}/{self.epochs} - learning rate: {self.learning_rate:.6f}'
-            )
+        self.sess = tf.Session(graph=self.graph)
+        with self.sess:
+            for epoch in range(self.epochs):
+                self.logger.info(
+                    f'\nEpoch: {epoch + 1}/{self.epochs} - learning rate: {self.learning_rate:.6f}'
+                )
 
-            # if this is an epoch on which we should save examples
-            if self.save_examples_every:
-                if epoch % self.save_examples_every == 0:
-                    save_examples = True
+                # if this is an epoch on which we should save examples
+                if self.save_examples_every:
+                    if epoch % self.save_examples_every == 0:
+                        save_examples = True
+                    else:
+                        save_examples = False
                 else:
                     save_examples = False
-            else:
-                save_examples = False
 
-            (acc_dict,
-             losses,
-             mn_loss,
-             loss_went_nan) = self._train_one_epoch(current_epoch=epoch, save_examples=save_examples)
+                (acc_dict,
+                 losses,
+                 mn_loss,
+                 loss_went_nan) = self._train_one_epoch(current_epoch=epoch, save_examples=save_examples)
 
-            if loss_went_nan:
-                break
-            else:
-                # violating DRY by unpacking dict into vars,
-                # because apparently format strings with dict keys blow up the PyCharm parser
-                train_acc = acc_dict['train']
-                train_accs.append(train_acc)
-                if 'val' in acc_dict:
-                    val_acc = acc_dict['val']
-                    val_accs.append(val_acc)
-                    self.logger.info(f'training accuracy: {train_acc: 6.3f}\n'
-                                     f'validation accuracy: {val_acc: 6.3f}\n'
-                                     f'mean losses: {mn_loss}')
+                if loss_went_nan:
+                    break
                 else:
-                    self.logger.info(f'training accuracy: {train_acc}\nmean losses: {mn_loss}')
-                self.save_checkpoint(checkpoint_path=self.data_dirs['checkpoint_path'])
+                    # violating DRY by unpacking dict into vars,
+                    # because apparently format strings with dict keys blow up the PyCharm parser
+                    train_acc = acc_dict['train']
+                    train_accs.append(train_acc)
+                    if 'val' in acc_dict:
+                        val_acc = acc_dict['val']
+                        val_accs.append(val_acc)
+                        self.logger.info(f'training accuracy: {train_acc: 6.3f}\n'
+                                         f'validation accuracy: {val_acc: 6.3f}\n'
+                                         f'mean losses: {mn_loss}')
+                    else:
+                        self.logger.info(f'training accuracy: {train_acc}\nmean losses: {mn_loss}')
+                    self.save_checkpoint(checkpoint_path=self.data_dirs['checkpoint_path'])
 
-                if self.save_loss:
-                    for loss_name, loss_arr in losses._asdict().items():
-                        loss_filename = os.path.join(self.data_dirs['loss_dir'],
-                                                     f'{loss_name}_epoch_{epoch}')
-                        np.save(loss_filename, loss_arr)
+                    if self.save_loss:
+                        for loss_name, loss_arr in losses._asdict().items():
+                            loss_filename = os.path.join(self.data_dirs['loss_dir'],
+                                                         f'{loss_name}_epoch_{epoch}')
+                            np.save(loss_filename, loss_arr)
 
-            if self.patience:
-                if 'val' in acc_dict:
-                    if acc_dict['val'] > max_acc:
-                        max_acc = acc_dict['val']
-                    if np.all(max_acc > np.asarray(val_accs[-self.patience:])):
-                        self.logger.info(f'patience is set to {self.patience}, and accuracy on validation set has not'
-                                         f' improved in {self.patience} epochs; stopping training.')
-                        self.save_checkpoint(checkpoint_path=self.data_dirs['checkpoint_path'])
-                        break
-                else:
-                    if acc_dict['train'] > max_acc:
-                        max_acc = acc_dict['val']
-                    if np.all(max_acc > np.asarray(train_accs[-self.patience:])):
-                        self.logger.info(f'patience is set to {self.patience}, and accuracy on training set has not'
-                                         f' improved in {self.patience} epochs; stopping training.')
-                        self.save_checkpoint(checkpoint_path=self.data_dirs['checkpoint_path'])
-                        break
+                if self.patience:
+                    if 'val' in acc_dict:
+                        if acc_dict['val'] > max_acc:
+                            max_acc = acc_dict['val']
+                        if np.all(max_acc > np.asarray(val_accs[-self.patience:])):
+                            self.logger.info(f'patience is set to {self.patience}, and accuracy on validation set '
+                                             f'has not improved in {self.patience} epochs; stopping training.')
+                            self.save_checkpoint(checkpoint_path=self.data_dirs['checkpoint_path'])
+                            break
+                    else:
+                        if acc_dict['train'] > max_acc:
+                            max_acc = acc_dict['val']
+                        if np.all(max_acc > np.asarray(train_accs[-self.patience:])):
+                            self.logger.info(f'patience is set to {self.patience}, and accuracy on training set has not'
+                                             f' improved in {self.patience} epochs; stopping training.')
+                            self.save_checkpoint(checkpoint_path=self.data_dirs['checkpoint_path'])
+                            break
 
         return loss_went_nan
 
@@ -448,222 +528,225 @@ class Trainer:
             lbl_for_examples = []
             num_examples_saved = 0
 
-        with tqdm(total=self.num_train_samples) as progress_bar:
-            batch = 0
-            for img, lbl, batch_train_inds in self.train_data.batch(self.batch_size):
-                if self.save_train_inds:
-                    train_inds.extend(batch_train_inds)
-                batch += 1
+        train_ds = self.train_data.batch(self.batch_size)
+        iterator = train_ds.make_initializable_iterator()
+        next_op = iterator.get_next()
+        self.sess.run(iterator.initializer)
 
-                out_t_minus_1 = self.model.reset()
+        batch_pbar = tqdm(range(self.num_train_samples // self.batch_size))
+        for batch in batch_pbar:
+            img, lbl, batch_train_inds = self.sess.run(next_op)
+            if self.save_train_inds:
+                train_inds.extend(batch_train_inds)
 
-                baselines = []
-                mu = []
-                locs_for_log_like = []
-                fixations_for_p = []
+            out_t_minus_1 = self.model.reset()
 
-                with tf.GradientTape(persistent=True) as tape:
+            baselines = []
+            mu = []
+            locs_for_log_like = []
+            fixations_for_p = []
+
+            with tf.GradientTape(persistent=True) as tape:
+                if save_examples:
+                    if num_examples_saved < self.num_examples_to_save:
+                        locs_t = []
+                        fixations_t = []
+                        glimpses_t = []
+
+                for t in range(self.model.glimpses):
+                    out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
+                    mu.append(out.mu)
+                    locs_for_log_like.append(out.l_t)
+                    fixations_for_p.append(out.fixations)
+                    baselines.append(out.b_t)
+
                     if save_examples:
                         if num_examples_saved < self.num_examples_to_save:
-                            locs_t = []
-                            fixations_t = []
-                            glimpses_t = []
+                            locs_t.append(out.l_t.numpy())
+                            fixations_t.append(out.fixations)
+                            glimpses_t.append(out.rho.numpy())
 
-                    for t in range(self.model.glimpses):
-                        out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
-                        mu.append(out.mu)
-                        locs_for_log_like.append(out.l_t)
-                        fixations_for_p.append(out.fixations)
-                        baselines.append(out.b_t)
+                    out_t_minus_1 = out
 
-                        if save_examples:
-                            if num_examples_saved < self.num_examples_to_save:
-                                locs_t.append(out.l_t.numpy())
-                                fixations_t.append(out.fixations)
-                                glimpses_t.append(out.rho.numpy())
+                # --------------------- first compute policy gradient with REINFORCE algorithm ---------------------
+                # repeat column vector n times where n = glimpses
+                # calculate reward.
+                # Remember that action network output a_t becomes predictions at last time step
+                predicted = tf.argmax(
+                    tf.nn.softmax(out.a_t),
+                    axis=1, output_type=tf.int32)
+                R = tf.equal(predicted, lbl)
+                acc = np.sum(R.numpy()) / R.numpy().shape[-1] * 100
+                accs.append(acc)
+                R = tf.cast(R, dtype=tf.float32)
+                # reshape reward to (batch size x number of glimpses)
+                # Note that, because we don't discount future reward, the return
+                # from any time step is just the actual reward on the last time step.
+                # i.e. we can just tile R for t steps and subtract the baseline from that
+                R = tf.expand_dims(R, axis=1)  # add axis
+                R = tf.tile(R, tf.constant([1, self.model.glimpses]))
+                mean_R = tf.reduce_mean(R)
+                var_R = tf.reduce_mean(tf.square(R - mean_R))
+                std_R = tf.sqrt(var_R)
 
-                        out_t_minus_1 = out
+                # convert baseline to (batch size x number of glimpses)
+                baselines = tf.stack(baselines, axis=1)
+                baselines = tf.squeeze(baselines)
+                # rescale baselines to match statistics of current batch of Q values
+                mean_bline = tf.reduce_mean(baselines)
+                var_bline = tf.reduce_mean(tf.square(baselines - mean_bline))
+                std_bline = tf.sqrt(var_bline)
+                baselines -= mean_bline
+                baselines /= std_bline
+                baselines = (baselines * std_R) + mean_R
 
-                    # --------------------- first compute policy gradient with REINFORCE algorithm ---------------------
-                    # repeat column vector n times where n = glimpses
-                    # calculate reward.
-                    # Remember that action network output a_t becomes predictions at last time step
-                    predicted = tf.argmax(
-                        tf.nn.softmax(out.a_t),
-                        axis=1, output_type=tf.int32)
-                    R = tf.equal(predicted, lbl)
-                    acc = np.sum(R.numpy()) / R.numpy().shape[-1] * 100
-                    accs.append(acc)
-                    R = tf.cast(R, dtype=tf.float32)
-                    # reshape reward to (batch size x number of glimpses)
-                    # Note that, because we don't discount future reward, the return
-                    # from any time step is just the actual reward on the last time step.
-                    # i.e. we can just tile R for t steps and subtract the baseline from that
-                    R = tf.expand_dims(R, axis=1)  # add axis
-                    R = tf.tile(R, tf.constant([1, self.model.glimpses]))
-                    mean_R = tf.reduce_mean(R)
-                    var_R = tf.reduce_mean(tf.square(R - mean_R))
-                    std_R = tf.sqrt(var_R)
+                advantage = R - baselines
+                mean_adv = tf.reduce_mean(advantage)
+                # also normalize advantage, to reduce variance
+                var_adv = tf.reduce_mean(tf.square(advantage - mean_adv))
+                std_adv = tf.sqrt(var_adv)
+                advantage -= mean_adv
+                advantage /= std_adv
 
-                    # convert baseline to (batch size x number of glimpses)
-                    baselines = tf.stack(baselines, axis=1)
-                    baselines = tf.squeeze(baselines)
-                    # rescale baselines to match statistics of current batch of Q values
-                    mean_bline = tf.reduce_mean(baselines)
-                    var_bline = tf.reduce_mean(tf.square(baselines - mean_bline))
-                    std_bline = tf.sqrt(var_bline)
-                    baselines -= mean_bline
-                    baselines /= std_bline
-                    baselines = (baselines * std_R) + mean_R
+                # convert mu and locs_for_log_like to (batch size x number of glimpses)
+                mu = tf.stack(mu, axis=1)
+                mu = tf.squeeze(mu)
+                locs_for_log_like = tf.stack(locs_for_log_like, axis=1)
+                locs_for_log_like = tf.squeeze(locs_for_log_like)
 
-                    advantage = R - baselines
-                    mean_adv = tf.reduce_mean(advantage)
-                    # also normalize advantage, to reduce variance
-                    var_adv = tf.reduce_mean(tf.square(advantage - mean_adv))
-                    std_adv = tf.sqrt(var_adv)
-                    advantage -= mean_adv
-                    advantage /= std_adv
+                dists = tfp.distributions.Normal(loc=mu, scale=self.model.location_network.loc_std)
 
-                    # convert mu and locs_for_log_like to (batch size x number of glimpses)
-                    mu = tf.stack(mu, axis=1)
-                    mu = tf.squeeze(mu)
-                    locs_for_log_like = tf.stack(locs_for_log_like, axis=1)
-                    locs_for_log_like = tf.squeeze(locs_for_log_like)
+                log_p_fixations = dists.log_prob(locs_for_log_like)
+                # assume each dimension is independent so joint probability is product of each
+                # and since these are logs we can sum the log(p)
+                log_p_fixations = tf.reduce_sum(log_p_fixations, axis=2)
 
-                    dists = tfp.distributions.Normal(loc=mu, scale=self.model.location_network.loc_std)
+                # pseudo-loss: the weighted log likelihood, which we let Tensorflow find the gradient of
+                # to give us the policy gradient, see https://youtu.be/XGmd3wcyDg8?t=4049
+                weighted_likelihoods = tf.multiply(log_p_fixations, advantage)
+                # need to sum across time steps in the episode
+                loss_reinforce = tf.reduce_sum(weighted_likelihoods, axis=1)
+                # get the expected mean across 'episodes', i.e. the batch
+                loss_reinforce = tf.reduce_mean(loss_reinforce)
+                # negative because we actually want to maximize
+                loss_reinforce = -loss_reinforce
 
-                    log_p_fixations = dists.log_prob(locs_for_log_like)
-                    # assume each dimension is independent so joint probability is product of each
-                    # and since these are logs we can sum the log(p)
-                    log_p_fixations = tf.reduce_sum(log_p_fixations, axis=2)
+                # --------------------- then compute other losses --------------------------------------------------
+                # scale target reward values to have mean zero and std=1
+                scaled_R = (R - mean_R) / std_R
 
-                    # pseudo-loss: the weighted log likelihood, which we let Tensorflow find the gradient of
-                    # to give us the policy gradient, see https://youtu.be/XGmd3wcyDg8?t=4049
-                    weighted_likelihoods = tf.multiply(log_p_fixations, advantage)
-                    # need to sum across time steps in the episode
-                    loss_reinforce = tf.reduce_sum(weighted_likelihoods, axis=1)
-                    # get the expected mean across 'episodes', i.e. the batch
-                    loss_reinforce = tf.reduce_mean(loss_reinforce)
-                    # negative because we actually want to maximize
-                    loss_reinforce = -loss_reinforce
+                loss_baseline = tf.losses.mean_squared_error(scaled_R, baselines)
 
-                    # --------------------- then compute other losses --------------------------------------------------
-                    # scale target reward values to have mean zero and std=1
-                    scaled_R = (R - mean_R) / std_R
+                loss_action = tf.losses.softmax_cross_entropy(tf.one_hot(lbl, depth=self.model.num_classes),
+                                                              out.a_t)
 
-                    loss_baseline = tf.losses.mean_squared_error(scaled_R, baselines)
+                loss_hybrid = loss_action + loss_reinforce
 
-                    loss_action = tf.losses.softmax_cross_entropy(tf.one_hot(lbl, depth=self.model.num_classes),
-                                                                  out.a_t)
+            loss_reinforce_np = loss_reinforce.numpy()
+            loss_baseline_np = loss_baseline.numpy()
+            loss_action_np = loss_action.numpy()
+            loss_hybrid_np = loss_hybrid.numpy()
 
-                    loss_hybrid = loss_action + loss_reinforce
+            if np.any(np.isnan(
+                    np.asarray([loss_reinforce_np,
+                                loss_baseline_np,
+                                loss_action_np,
+                                loss_hybrid_np]
+                               ))
+            ):
+                loss_is_nan = True
 
-                loss_reinforce_np = loss_reinforce.numpy()
-                loss_baseline_np = loss_baseline.numpy()
-                loss_action_np = loss_action.numpy()
-                loss_hybrid_np = loss_hybrid.numpy()
+            if loss_is_nan:
+                break
 
-                if np.any(np.isnan(
-                        np.asarray([loss_reinforce_np,
-                                    loss_baseline_np,
-                                    loss_action_np,
-                                    loss_hybrid_np]
-                                   ))
-                ):
-                    loss_is_nan = True
+            losses_reinforce.append(loss_reinforce_np)
+            losses_baseline.append(loss_baseline_np)
+            losses_action.append(loss_action_np)
+            losses_hybrid.append(loss_hybrid_np)
 
-                if loss_is_nan:
-                    break
+            # apply reinforce loss to just location network
+            # p.5 of Mnih et al. 2014, "The location network $f_l$ is always trained with REINFORCE."
+            reinforce_params = [var for net in [self.model.location_network,
+                                                self.model.glimpse_network,
+                                                self.model.action_network,
+                                                self.model.core_network]
+                                for var in net.variables]
+            reinforce_grads = tape.gradient(loss_reinforce, reinforce_params)
 
-                losses_reinforce.append(loss_reinforce_np)
-                losses_baseline.append(loss_baseline_np)
-                losses_action.append(loss_action_np)
-                losses_hybrid.append(loss_hybrid_np)
+            # apply MSE loss to baseline, p.5 of Mnih et al. 2014
+            # apply reinforce loss to just location network
+            baseline_params = self.model.baseline.variables
+            baseline_grads = tape.gradient(loss_baseline, baseline_params)
 
-                # apply reinforce loss to just location network
-                # p.5 of Mnih et al. 2014, "The location network $f_l$ is always trained with REINFORCE."
-                reinforce_params = [var for net in [self.model.location_network,
-                                                    self.model.glimpse_network,
-                                                    self.model.action_network,
-                                                    self.model.core_network]
-                                    for var in net.variables]
-                reinforce_grads = tape.gradient(loss_reinforce, reinforce_params)
+            # apply action loss + reinforce loss to glimpse network, core network, and action network
+            # p.4 "We learn these [action, core, and network parameters] to maximize reward".
+            # p.5 "We optimize cross entropy loss to train the action network and backpropagate the
+            # gradients through the core and glimpse networks."
+            action_params = [var for net in [self.model.glimpse_network,
+                                             self.model.action_network,
+                                             self.model.core_network]
+                             for var in net.variables]
+            action_grads = tape.gradient(loss_action, action_params)
 
-                # apply MSE loss to baseline, p.5 of Mnih et al. 2014
-                # apply reinforce loss to just location network
-                baseline_params = self.model.baseline.variables
-                baseline_grads = tape.gradient(loss_baseline, baseline_params)
+            # use control_dependencies context manager to ensure weight updates from one loss
+            # don't affect other updates
+            with tf.control_dependencies([reinforce_grads, baseline_grads, action_grads]):
+                self.optimizers['reinforce_optimizer'].apply_gradients(
+                    zip(reinforce_grads, reinforce_params))
+                self.optimizers['baseline_optimizer'].apply_gradients(
+                    zip(baseline_grads, baseline_params))
+                self.optimizers['hybrid_optimizer'].apply_gradients(
+                    zip(action_grads, action_params))
 
-                # apply action loss + reinforce loss to glimpse network, core network, and action network
-                # p.4 "We learn these [action, core, and network parameters] to maximize reward".
-                # p.5 "We optimize cross entropy loss to train the action network and backpropagate the
-                # gradients through the core and glimpse networks."
-                action_params = [var for net in [self.model.glimpse_network,
-                                                 self.model.action_network,
-                                                 self.model.core_network]
-                                 for var in net.variables]
-                action_grads = tape.gradient(loss_action, action_params)
+            tf.train.get_or_create_global_step().assign_add(1)
 
-                # use control_dependencies context manager to ensure weight updates from one loss
-                # don't affect other updates
-                with tf.control_dependencies([reinforce_grads, baseline_grads, action_grads]):
-                    self.optimizers['reinforce_optimizer'].apply_gradients(
-                        zip(reinforce_grads, reinforce_params))
-                    self.optimizers['baseline_optimizer'].apply_gradients(
-                        zip(baseline_grads, baseline_params))
-                    self.optimizers['hybrid_optimizer'].apply_gradients(
-                        zip(action_grads, action_params))
+            # deal with examples if we are saving them
+            if save_examples:
+                # note we save the **first** n samples
+                if num_examples_saved < self.num_examples_to_save:
+                    # stack so axis 0 is sample index, axis 1 is number of glimpses
+                    locs_t = np.stack(locs_t, axis=1)
+                    fixations_t = np.stack(fixations_t, axis=1)
+                    glimpses_t = np.stack(glimpses_t, axis=1)
 
-                tf.train.get_or_create_global_step().assign_add(1)
+                    num_samples = locs_t.shape[0]
 
-                # deal with examples if we are saving them
-                if save_examples:
-                    # note we save the **first** n samples
-                    if num_examples_saved < self.num_examples_to_save:
-                        # stack so axis 0 is sample index, axis 1 is number of glimpses
-                        locs_t = np.stack(locs_t, axis=1)
-                        fixations_t = np.stack(fixations_t, axis=1)
-                        glimpses_t = np.stack(glimpses_t, axis=1)
+                    if num_examples_saved + num_samples <= self.num_examples_to_save:
+                        locs.append(locs_t)
+                        fixations.append(fixations_t)
+                        glimpses.append(glimpses_t)
+                        pred.append(predicted)
+                        img_for_examples.append(img)
+                        lbl_for_examples.append(lbl)
 
-                        num_samples = locs_t.shape[0]
+                        num_examples_saved = num_examples_saved + num_samples
 
-                        if num_examples_saved + num_samples <= self.num_examples_to_save:
-                            locs.append(locs_t)
-                            fixations.append(fixations_t)
-                            glimpses.append(glimpses_t)
-                            pred.append(predicted)
-                            img_for_examples.append(img)
-                            lbl_for_examples.append(lbl)
+                    elif num_examples_saved + num_samples > self.num_examples_to_save:
+                        num_needed = self.num_examples_to_save - num_examples_saved
 
-                            num_examples_saved = num_examples_saved + num_samples
+                        locs.append(locs_t[:num_needed])
+                        fixations.append(fixations_t[:num_needed])
+                        glimpses.append(glimpses_t[:num_needed])
+                        pred.append(predicted[:num_needed])
+                        img_for_examples.append(img[:num_needed])
+                        lbl_for_examples.append(lbl_for_examples[:num_needed])
 
-                        elif num_examples_saved + num_samples > self.num_examples_to_save:
-                            num_needed = self.num_examples_to_save - num_examples_saved
+                        num_examples_saved = num_examples_saved + num_needed
 
-                            locs.append(locs_t[:num_needed])
-                            fixations.append(fixations_t[:num_needed])
-                            glimpses.append(glimpses_t[:num_needed])
-                            pred.append(predicted[:num_needed])
-                            img_for_examples.append(img[:num_needed])
-                            lbl_for_examples.append(lbl_for_examples[:num_needed])
+            toc = time.time()
 
-                            num_examples_saved = num_examples_saved + num_needed
-
-                toc = time.time()
-
-                progress_bar.set_description(
-                    (
-                        "{:.1f}s. Loss: reinforce {:.3f}; action {:.3f}; baseline {:.3f}; hybrid {:.3f}. "
-                        "Acc: {:.3f}".format(
-                            (toc-tic),
-                            loss_reinforce.numpy(),
-                            loss_action.numpy(),
-                            loss_baseline.numpy(),
-                            loss_hybrid.numpy(),
-                            acc)
-                    )
+            batch_pbar.set_description(
+                (
+                    "{:.1f}s. Loss: reinforce {:.3f}; action {:.3f}; baseline {:.3f}; hybrid {:.3f}. "
+                    "Acc: {:.3f}".format(
+                        (toc-tic),
+                        loss_reinforce.numpy(),
+                        loss_action.numpy(),
+                        loss_baseline.numpy(),
+                        loss_hybrid.numpy(),
+                        acc)
                 )
-                progress_bar.update(self.batch_size)
+            )
 
         acc_dict = {'train': np.mean(accs)}
         if not loss_is_nan:
