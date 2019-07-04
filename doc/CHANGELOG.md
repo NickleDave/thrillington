@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Trainer has `patience` attribute, number of epochs it will for accuracy to improve before 
   stopping training early.
+- add `prep` command to command-line interface, to separate preparing datasets from 
+  training and testing models.
 
 ### Changed
 - use `tensorflow_probability` for distributions

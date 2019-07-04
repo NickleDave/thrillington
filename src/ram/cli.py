@@ -95,10 +95,10 @@ def _call_test(config, configfile, logger, command, dataset_module):
     logger.info("\nRunning main in 'test' mode, will test accuracy of previously trained models\n"
                 "on the test data set.")
 
+    logger.info(f'\nLoading test data from path in {config.data.paths_dict_fname}, ')
     with open(config.data.paths_dict_fname) as fp:
         paths_dict = json.load(fp)
 
-    logger.info(f'\nLoading test data from path in {paths_dict_fname}, ')
     logger.info(f'\nUsing {config.data.module} module to load dataset')
     test_data = dataset_module.get_split(paths_dict, setname=['test'])
     tester = ram.Tester.from_config(config=config, test_data=test_data, logger=logger)

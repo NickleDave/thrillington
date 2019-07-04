@@ -1,7 +1,10 @@
+import ast
 import os
 from configparser import ConfigParser
 
 import attr
+import numpy as np
+
 
 VALID_OPTIONS = {
     'model': [
@@ -35,6 +38,7 @@ VALID_OPTIONS = {
         'save_loss',
         'save_train_inds',
         'patience',
+        'val_l0',
     ],
     'data': [
         'root_results_dir',
@@ -48,6 +52,7 @@ VALID_OPTIONS = {
     'test': [
         'save_examples',
         'num_examples_to_save',
+        'test_l0',
     ],
     'misc': [
         'save_log',
@@ -128,6 +133,12 @@ class TrainConfig(object):
     patience = attr.ib(converter=attr.converters.optional(int), default=None)
     # user does not specify current replicate, gets changed by main()
     current_replicate = attr.ib(type=int, default=None)
+    val_l0 = attr.ib(converter=attr.converters.optional(ast.literal_eval), default=None)
+
+    def __attrs_post_init__(self):
+        # convert to array so we can broadcast to batch size,
+        # and cast to float32 so Tensorflow doesn't crash
+        self.val_l0 = np.asarray(self.val_l0, dtype=np.float32)
 
 
 @attr.s
@@ -135,6 +146,12 @@ class TestConfig(object):
     """class that represents configuration for testing a RAM model"""
     save_examples = attr.ib(converter=strtobool, default='True')
     num_examples_to_save = attr.ib(converter=attr.converters.optional(int), default=None)
+    test_l0 = attr.ib(converter=attr.converters.optional(ast.literal_eval), default=None)
+
+    def __attrs_post_init__(self):
+        # convert to array so we can broadcast to batch size,
+        # and cast to float32 so Tensorflow doesn't crash
+        self.test_l0 = np.asarray(self.test_l0, dtype=np.float32)
 
 
 @attr.s
