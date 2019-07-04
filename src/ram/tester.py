@@ -19,6 +19,8 @@ from tqdm import tqdm
 import attr
 
 from ram import ram
+from .ram import StateAndMeta
+
 
 LossesTuple = namedtuple('LossesTuple', ['reinforce_loss',
                                          'baseline_loss',
@@ -41,6 +43,7 @@ class Tester:
                  learning_rate,
                  optimizers,
                  test_data,
+                 test_l0,
                  save_log,
                  replicates=1,
                  logger=None,
@@ -58,6 +61,8 @@ class Tester:
             self.logger = logging.getLogger(__name__)
             self.logger.setLevel('INFO')
             self.logger.addHandler(logging.StreamHandler(sys.stdout))
+
+        self.test_l0 = test_l0
 
         self.test_data = test_data.dataset
         self.logger.info(f'Test data: {self.test_data}')
@@ -104,6 +109,7 @@ class Tester:
                    learning_rate=config.train.learning_rate,
                    optimizers=optimizers,
                    test_data=test_data,
+                   test_l0=config.test.test_l0,
                    save_log=config.misc.save_log,
                    replicates=config.train.replicates,
                    logger=logger)
@@ -183,6 +189,9 @@ class Tester:
                 batch += 1
 
                 out_t_minus_1 = self.model.reset()
+                if self.test_l0 is not None:
+                    l_t = np.broadcast_to(self.test_l0, shape=(self.batch_size, 2))
+                    out_t_minus_1 = StateAndMeta(None, None, out_t_minus_1.h_t, None, l_t, None, None)
 
                 if save_examples:
                     if num_examples_saved < num_examples_to_save:
