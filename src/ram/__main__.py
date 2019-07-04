@@ -67,8 +67,6 @@ def cli(command, configfile):
     # get config first so we can know if we should save log, where to make results directory, etc.
     config = ram.parse_config(configfile)
 
-    tf.random.set_random_seed(config.misc.random_seed)
-
     # start logging; instantiate logger through getLogger function
     logger = logging.getLogger('ram-cli')
     logger.setLevel('INFO')
@@ -118,18 +116,12 @@ def cli(command, configfile):
         logger.info(f'val size (None = no validation set): {config.data.val_size}')
         logger.info(f'saved .npy files in: {config.data.data_dir}')
         logger.info(f"Full paths to files returned by dataset.mnist.prep:\n{paths_dict}")
-        if config.data.val_size:
-            logger.info(f'Will use validation data set')
-            train_data, val_data = dataset_module.get_split(paths_dict, setname=['train', 'val'])
-        else:
-            train_data = dataset_module.get_split(paths_dict, setname=['train'])
-            val_data = None
 
-            logger.info("\nStarting training.")
+        logger.info("\nStarting training.")
 
         trainer = ram.Trainer.from_config(config=config,
-                                          train_data=train_data,
-                                          val_data=val_data,
+                                          dataset_module=dataset_module,
+                                          paths_dict_fname=paths_dict_fname,
                                           logger=logger)
         trainer.train(results_dir=results_dir)
 
