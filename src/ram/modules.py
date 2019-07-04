@@ -10,7 +10,6 @@ https://github.com/kevinzakka/recurrent-visual-attention
 """
 from typing import NamedTuple
 
-import numpy as np
 import tensorflow as tf
 import tensorflow_probability as tfp
 
@@ -18,7 +17,7 @@ import tensorflow_probability as tfp
 class Glimpse(NamedTuple):
     """represents output of GlimpseSensor"""
     rho: tf.Tensor
-    fixations: np.ndarray
+    fixations: tf.Tensor
 
 
 class GlimpseSensor(tf.keras.Model):
@@ -76,7 +75,7 @@ class GlimpseSensor(tf.keras.Model):
                     calculated top left corners of extracted glimpse 'patches'.
                     Useful for plotting the glimpses.
         """
-        batch_size, img_H, img_W, C = images.shape.as_list()
+        batch_size, img_H, img_W, C = images.shape
         # convert image co-ordinates from normalized to co-ordinates within
         # the specific size of the images
         # first convert location to range from 0 to 1
@@ -122,7 +121,6 @@ class GlimpseSensor(tf.keras.Model):
             rho.append(patches)
 
         rho = tf.stack(rho)
-        fixations = fixations.numpy()
         return Glimpse(rho, fixations)
 
 
