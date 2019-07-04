@@ -101,7 +101,9 @@ def _call_test(config, configfile, logger, command, dataset_module):
 
     logger.info(f'\nUsing {config.data.module} module to load dataset')
     test_data = dataset_module.get_split(paths_dict, setname=['test'])
-    tester = ram.Tester.from_config(config=config, test_data=test_data, logger=logger)
+    tester = ram.Tester.from_config(config=config,
+                                    test_data=test_data,
+                                    logger=logger)
     tester.test(results_dir=results_dir, save_examples=config.test.save_examples,
                 num_examples_to_save=config.test.num_examples_to_save)
 
