@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stopping training early.
 - add `prep` command to command-line interface, to separate preparing datasets from 
   training and testing models.
+- add ability to specify fixed `l0`, initial location on time step zero, that can be used when 
+  measuring accuracy on validation and test sets
+- add Monte Carlo sampling of policy when measuring accuracy on validation and test sets
+  + number of episodes to run for each is specified with `num_mc_episodes` option in 
+    [misc] section of config.ini file
 
 ### Changed
 - use `tensorflow_probability` for distributions
