@@ -1,9 +1,29 @@
+from datetime import datetime
 import importlib.util
+import json
 import logging
+import os
+import sys
 
+import numpy as np
 import tensorflow as tf
 
 import ram
+
+
+CONFIG_FILES = [
+    'data/config/RAM_config_2019-04-20-2315-MNIST.ini',
+    'data/config/RAM_config_2019-04-22-1724-MNIST.ini',
+]
+
+L0s = [
+    [0., 0.],
+    [-0.5, -0.5],
+    [-0.5, 0.5],
+    [0.5, -0.5],
+    [0.5, 0.5],
+]
+L0s = [np.asarray(arr, dtype=np.float32) for arr in L0s]
 
 
 def main():
@@ -42,13 +62,15 @@ def main():
 
         logger.info(f'\nUsing {config.data.module} module to load dataset')
         data = dataset_module.get_split(paths_dict, setname=['test'])
-        runnner = ram.Runner.from_config(config=config,
-                                         data=data,
-                                         logger=logger)
-        tester.test(results_dir=results_dir, save_examples=config.test.save_examples,
-                    num_examples_to_save=config.test.num_examples_to_save)
 
-        runner = ram.Runner()
+        for l0 in L0s:
+            logger.info(f'running with l0={l0}')
+            runner = ram.Runner.from_config(config=config,
+                                            data=data,
+                                            l0=l0,
+                                            logger=logger)
+            runner.run(results_dir=results_dir, save_examples=True,
+                       num_examples_to_save=config.test.num_examples_to_save)
 
 
 if __name__ == '__main__':
