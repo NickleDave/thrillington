@@ -16,15 +16,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   + number of episodes to run for each is specified with `num_mc_episodes` option in 
     [misc] section of config.ini file
 - add `dataset.searchstims` module for working with images from `searchstims` package
+- Trainer attempts to repeat training a given replicate if the loss takes on NaN values; does 
+  so five times before giving up
+- `utils` module with utility functions (some of which were in `plot` module before)
 
 ### Changed
 - use `tensorflow_probability` for distributions
+- improve `examples` function in `plot` module that creates animation of model glimpses plotted on examples;
+  will show actual glimpses that model extracted below examples; can specify color map for example images
 
 ### Fixed
 - specifically use Normal distribution from `tensorflow_probability` in `LocationNetwork` module so that
   backpropagation works properly through this node
   + not clear if it fails when just using `tf.random.normal` because it's just not that easy yet to introspect 
-    gradients in Tensorflow ()although this could be a problem with the programmer)
+    gradients in Tensorflow (although this could be a problem with the programmer)
 
 ## [0.0.2a1] 2019-02-04
 ### Added
