@@ -50,7 +50,9 @@ class Trainer:
                  val_data=None,
                  val_l0=None,
                  num_mc_episode=10,
+                 seed=42,
                  shuffle_each_epoch=True,
+                 shuffle_buffer_size=10000,
                  patience=None,
                  replicates=1,
                  restore=False,
@@ -123,12 +125,17 @@ class Trainer:
         self.optimizers = optimizers
         self.logger.info(f'Optimizers : {self.optimizers}')
 
+        self.seed = seed
+        self.shuffle_buffer_size = shuffle_buffer_size
         self.shuffle_each_epoch = shuffle_each_epoch
         if self.shuffle_each_epoch:
+            self.logger.info(f'Will shuffle each epoch with shuffle buffer size:{self.shuffle_buffer_size}')
             self.train_data = self.train_data.shuffle(
-                buffer_size=self.num_train_samples,
-                seed=None,
+                buffer_size=shuffle_buffer_size,
+                seed=seed,
                 reshuffle_each_iteration=True)
+        else:
+            self.logger.info(f'Will not shuffle each epoch')
 
         self.patience = patience
 
@@ -197,7 +204,9 @@ class Trainer:
                    val_data=val_data,
                    val_l0=config.train.val_l0,
                    num_mc_episode=config.misc.num_mc_episode,
+                   seed=config.misc.random_seed,
                    shuffle_each_epoch=config.train.shuffle_each_epoch,
+                   shuffle_buffer_size=config.train.shuffle_buffer_size,
                    patience=config.train.patience,
                    replicates=config.train.replicates,
                    restore=config.train.restore,
