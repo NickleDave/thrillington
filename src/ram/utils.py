@@ -3,28 +3,36 @@ import os
 import numpy as np
 
 
-def get_example_arrs(epoch, glimpses_filename=None, fixations_filename=None,
-                     images_filename=None, predictions_filename=None,
-                     examples_dir=None, num_examples_to_show=None):
+def get_example_arrs(suffix='_epoch_test', glimpses_filename=None, fixations_filename=None,
+                     locations_filename=None, images_filename=None, labels_filename=None,
+                     predictions_filename=None, examples_dir=None, num_examples_to_show=None):
     """load saved examples and return as arrays
 
     Parameters
     ----------
-    epoch : int
-        epoch from which examples were saved. If plotting test examples, use the
-        string 'test' instead of an epoch number.
+    suffix : str
+        suffix applied to each saved array file.
+        Can be epoch from which examples were saved, e.g. '_epoch_100'.
+        If plotting test examples, use the string '_epoch_test' instead of an epoch number.
+        Examples saved by runner should have suffix '_from_run'.
     glimpses_filename : str
         filename with glimpses from saved examples. Default is None, in which case the default
-        'glimpses_epoch_{epoch}.npy' is used.
+        'glimpses{suffix}.npy' is used.
     fixations_filename : str
         filename with fixations (pixel co-ordinates of glimpse location) from saved examples.
-        Default is None, in which case the default 'fixations_epoch_{epoch}.npy' is used.
+        Default is None, in which case the default 'fixations{suffix}.npy' is used.
+    locations_filename : str
+        filename with locations (co-ordinates of glimpse location, normalized to [-1, 1])
+        from saved examples. Default is None, in which case the default 'locations{suffix}.npy' is used.
     images_filename : str
         filename with images from from saved examples. Default is None, in which case the default
-        'images_epoch_{epoch}.npy' is used.
+        'images{suffix}.npy' is used.
+    labels_filename : str
+        filename with labels from from saved examples. Default is None, in which case the default
+        'labels{suffix}.npy' is used.
     predictions_filename : str
         filename with predictions from saved examples. Default is None, in which case the default
-        'predictions_epoch_{epoch}.npy' is used.
+        'predictions{suffix}.npy' is used.
     examples_dir : str
         path to directory where examples are svaed
     num_examples_to_show : int
@@ -42,32 +50,42 @@ def get_example_arrs(epoch, glimpses_filename=None, fixations_filename=None,
         containing predictions made by RAM
     """
     if glimpses_filename is None:
-        glimpses_filename = f"glimpses_epoch_{epoch}.npy"
+        glimpses_filename = f"glimpses{suffix}.npy"
     if fixations_filename is None:
-        fixations_filename = f"fixations_epoch_{epoch}.npy"
+        fixations_filename = f"fixations{suffix}.npy"
+    if locations_filename is None:
+        locations_filename = f"locations{suffix}.npy"
     if images_filename is None:
-        images_filename = f"images_epoch_{epoch}.npy"
+        images_filename = f"images{suffix}.npy"
+    if labels_filename is None:
+        labels_filename = f"labels{suffix}.npy"
     if predictions_filename is None:
-        predictions_filename = f"predictions_epoch_{epoch}.npy"
+        predictions_filename = f"predictions{suffix}.npy"
 
     if examples_dir:
         glimpses_filename = os.path.join(examples_dir, glimpses_filename)
         fixations_filename = os.path.join(examples_dir, fixations_filename)
+        locations_filename = os.path.join(examples_dir, fixations_filename)
         images_filename = os.path.join(examples_dir, images_filename)
+        labels_filename = os.path.join(examples_dir, labels_filename)
         predictions_filename = os.path.join(examples_dir, predictions_filename)
 
     glimpses = np.load(glimpses_filename)
     fixations = np.load(fixations_filename)
+    locations = np.load(locations_filename)
     images = np.load(images_filename)
+    labels = np.load(labels_filename)
     predictions = np.load(predictions_filename)
 
     if num_examples_to_show:
         glimpses = glimpses[:num_examples_to_show]
         fixations = fixations[:num_examples_to_show]
+        locations = locations[:num_examples_to_show]
         images = images[:num_examples_to_show]
+        labels = labels[:num_examples_to_show]
         predictions = predictions[:num_examples_to_show]
 
-    return glimpses, fixations, images, predictions
+    return glimpses, fixations, locations, images, labels, predictions
 
 
 def denormalize_loc(locations, img_height, img_width):
