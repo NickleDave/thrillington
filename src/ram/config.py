@@ -151,7 +151,8 @@ class TrainConfig(object):
     def __attrs_post_init__(self):
         # convert to array so we can broadcast to batch size,
         # and cast to float32 so Tensorflow doesn't crash
-        self.val_l0 = np.asarray(self.val_l0, dtype=np.float32)
+        if self.val_l0 is not None:
+            self.val_l0 = np.asarray(self.val_l0, dtype=np.float32)
 
 
 @attr.s
@@ -164,7 +165,8 @@ class TestConfig(object):
     def __attrs_post_init__(self):
         # convert to array so we can broadcast to batch size,
         # and cast to float32 so Tensorflow doesn't crash
-        self.test_l0 = np.asarray(self.test_l0, dtype=np.float32)
+        if self.test_l0 is not None:
+            self.test_l0 = np.asarray(self.test_l0, dtype=np.float32)
 
 
 @attr.s
