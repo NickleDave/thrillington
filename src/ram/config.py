@@ -48,6 +48,7 @@ VALID_OPTIONS = {
         'module',
         'train_size',
         'val_size',
+        'test_size',
         'results_dir_made_by_main',
         'paths_dict_fname',
         'stim_type',
@@ -108,6 +109,8 @@ class DataConfig(object):
     module = attr.ib(type=str, default='mnist')
     train_size = attr.ib(converter=attr.converters.optional(float), default=None)
     val_size = attr.ib(converter=attr.converters.optional(float), default=None)
+    test_size = attr.ib(converter=attr.converters.optional(float), default=None)
+
     # below gets added by main script to config file during training so it can be used
     # when measuring accuracy on test set
     results_dir_made_by_main = attr.ib(type=attr.converters.optional(str), default=None)
