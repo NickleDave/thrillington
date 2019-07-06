@@ -50,6 +50,7 @@ VALID_OPTIONS = {
         'val_size',
         'results_dir_made_by_main',
         'paths_dict_fname',
+        'stim_type',
     ],
     'test': [
         'save_examples',
@@ -110,7 +111,11 @@ class DataConfig(object):
     # below gets added by main script to config file during training so it can be used
     # when measuring accuracy on test set
     results_dir_made_by_main = attr.ib(type=attr.converters.optional(str), default=None)
+
     paths_dict_fname = attr.ib(type=attr.converters.optional(str), default=None)
+
+    # used for dataset.searchstims module
+    stim_type = attr.ib(type=attr.converters.optional(str), default=None)
 
 
 @attr.s
