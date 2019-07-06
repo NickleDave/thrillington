@@ -7,6 +7,7 @@ For recording behavior given specified initial starting locations.
    https://arxiv.org/abs/1406.6247
 """
 import os
+import os
 import sys
 import time
 from collections import namedtuple
@@ -78,7 +79,7 @@ class Runner:
         self.model = None
 
     @classmethod
-    def from_config(cls, config, data, logger=None):
+    def from_config(cls, config, data, l0, logger=None):
         if config.train.decay_rate:
             learning_rate = tf.train.exponential_decay(
                 learning_rate=config.train.learning_rate,
@@ -111,7 +112,7 @@ class Runner:
                    learning_rate=config.train.learning_rate,
                    optimizers=optimizers,
                    data=data,
-                   l0=config.test.test_l0,
+                   l0=l0,
                    save_log=config.misc.save_log,
                    num_mc_episode=config.misc.num_mc_episode,
                    replicates=config.train.replicates,
@@ -187,7 +188,7 @@ class Runner:
         tic = time.time()
 
         total = self.num_samples * self.num_mc_episode
-        self.logger.info(f'measuring accuracy on {self.num__samples}, with {self.num_mc_episode} episodes for each '
+        self.logger.info(f'measuring accuracy on {self.num_samples}, with {self.num_mc_episode} episodes for each '
                          f'sample, for a total of {total} iterations')
         with tqdm(total=total) as progress_bar:
             batch = 0
@@ -205,7 +206,6 @@ class Runner:
                         if num_examples_saved < num_examples_to_save:
                             # initialize lists we'll append to for this run through t time steps
                             # (across batch of size b)
-                            # this gets overwritten if Monte Carlo sampling > 1, but we'll just ignore that for now
                             locs_t = []
                             fixations_t = []
                             glimpses_t = []
@@ -231,6 +231,41 @@ class Runner:
                     accs.append(acc)
                     true_lbl.append(lbl)
 
+                    # deal with examples if we are saving them
+                    # notice we do this inside the Monte Carlo sampling loop so we get more than one episode
+                    # for a given (dataset) sample
+                    if save_examples:
+                        # note we save the **first** n samples
+                        if num_examples_saved < num_examples_to_save:
+                            # stack so axis 0 is sample index, axis 1 is number of glimpses
+                            locs_t = np.stack(locs_t, axis=1)
+                            fixations_t = np.stack(fixations_t, axis=1)
+                            glimpses_t = np.stack(glimpses_t, axis=1)
+
+                            num_samples = locs_t.shape[0]
+
+                            if num_examples_saved + num_samples <= num_examples_to_save:
+                                locs.append(locs_t)
+                                fixations.append(fixations_t)
+                                glimpses.append(glimpses_t)
+                                pred.append(predicted)
+                                img_for_examples.append(img)
+                                lbl_for_examples.append(lbl)
+
+                                num_examples_saved = num_examples_saved + num_samples
+
+                            elif num_examples_saved + num_samples > num_examples_to_save:
+                                num_needed = num_examples_to_save - num_examples_saved
+
+                                locs.append(locs_t[:num_needed])
+                                fixations.append(fixations_t[:num_needed])
+                                glimpses.append(glimpses_t[:num_needed])
+                                pred.append(predicted[:num_needed])
+                                img_for_examples.append(img[:num_needed])
+                                lbl_for_examples.append(lbl[:num_needed])
+
+                                num_examples_saved = num_examples_saved + num_needed
+
                     toc = time.time()
 
                     progress_bar.set_description(
@@ -240,39 +275,6 @@ class Runner:
                     )
                     progress_bar.update(self.batch_size)
 
-                # deal with examples if we are saving them
-                if save_examples:
-                    # note we save the **first** n samples
-                    if num_examples_saved < num_examples_to_save:
-                        # stack so axis 0 is sample index, axis 1 is number of glimpses
-                        locs_t = np.stack(locs_t, axis=1)
-                        fixations_t = np.stack(fixations_t, axis=1)
-                        glimpses_t = np.stack(glimpses_t, axis=1)
-
-                        num_samples = locs_t.shape[0]
-
-                        if num_examples_saved + num_samples <= num_examples_to_save:
-                            locs.append(locs_t)
-                            fixations.append(fixations_t)
-                            glimpses.append(glimpses_t)
-                            pred.append(predicted)
-                            img_for_examples.append(img)
-                            lbl_for_examples.append(lbl)
-
-                            num_examples_saved = num_examples_saved + num_samples
-
-                        elif num_examples_saved + num_samples > num_examples_to_save:
-                            num_needed = num_examples_to_save - num_examples_saved
-
-                            locs.append(locs_t[:num_needed])
-                            fixations.append(fixations_t[:num_needed])
-                            glimpses.append(glimpses_t[:num_needed])
-                            pred.append(predicted[:num_needed])
-                            img_for_examples.append(img[:num_needed])
-                            lbl_for_examples.append(lbl[:num_needed])
-
-                            num_examples_saved = num_examples_saved + num_needed
-
         if save_examples:
             for arr, stem in zip(
                     (locs, fixations, glimpses, img_for_examples, pred, lbl_for_examples),
@@ -280,7 +282,7 @@ class Runner:
             ):
                 arr = np.concatenate(arr)
                 file = os.path.join(examples_dir,
-                                    f'{stem}_epoch_test')
+                                    f'{stem}_from_run')
                 np.save(file=file, arr=arr)
 
         accs = np.asarray(accs)
