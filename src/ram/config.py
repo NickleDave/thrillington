@@ -33,6 +33,7 @@ VALID_OPTIONS = {
         'checkpoint_prefix',
         'restore',
         'shuffle_each_epoch',
+        'shuffle_buffer_size',
         'save_examples_every',
         'num_examples_to_save',
         'save_loss',
@@ -127,6 +128,7 @@ class TrainConfig(object):
     checkpoint_prefix = attr.ib(type=str, default='ckpt')
     restore = attr.ib(converter=strtobool, default='False')
     shuffle_each_epoch = attr.ib(converter=strtobool, default='True')
+    shuffle_buffer_size = attr.ib(converter=int, default=10000)
     save_examples_every = attr.ib(converter=int, default=25)
     num_examples_to_save = attr.ib(converter=int, default=9)
     save_loss = attr.ib(converter=strtobool, default='False')
