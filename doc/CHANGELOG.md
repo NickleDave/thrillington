@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - add Monte Carlo sampling of policy when measuring accuracy on validation and test sets
   + number of episodes to run for each is specified with `num_mc_episodes` option in 
     [misc] section of config.ini file
+- add `dataset.searchstims` module for working with images from `searchstims` package
 
 ### Changed
 - use `tensorflow_probability` for distributions
