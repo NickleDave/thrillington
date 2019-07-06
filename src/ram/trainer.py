@@ -49,6 +49,7 @@ class Trainer:
                  train_data,
                  val_data=None,
                  val_l0=None,
+                 val_step=10,
                  num_mc_episode=10,
                  seed=42,
                  shuffle_each_epoch=True,
@@ -113,6 +114,7 @@ class Trainer:
             self.num_val_samples = None
 
         self.val_l0 = val_l0
+        self.val_step = val_step
         self.num_mc_episode = num_mc_episode
 
         # hyperparams that will be common across replicates
@@ -203,6 +205,7 @@ class Trainer:
                    train_data=train_data,
                    val_data=val_data,
                    val_l0=config.train.val_l0,
+                   val_step=config.train.val_step,
                    num_mc_episode=config.misc.num_mc_episode,
                    seed=config.misc.random_seed,
                    shuffle_each_epoch=config.train.shuffle_each_epoch,
@@ -380,9 +383,9 @@ class Trainer:
             if self.val_data:
                 val_accs = []
 
-        for epoch in range(self.epochs):
+        for epoch in range(1, self.epochs + 1):
             self.logger.info(
-                f'\nEpoch: {epoch + 1}/{self.epochs} - learning rate: {self.learning_rate:.6f}'
+                f'\nEpoch: {epoch}/{self.epochs} - learning rate: {self.learning_rate:.6f}'
             )
 
             # if this is an epoch on which we should save examples
@@ -423,7 +426,7 @@ class Trainer:
                         np.save(loss_filename, loss_arr)
 
             if self.patience:
-                if 'val' in acc_dict:
+                if self.val_data is not None and epoch % self.val_step == 0:
                     if acc_dict['val'] > max_acc:
                         max_acc = acc_dict['val']
                     if np.all(max_acc > np.asarray(val_accs[-self.patience:])):
@@ -431,7 +434,9 @@ class Trainer:
                                          f' improved in {self.patience} epochs; stopping training.')
                         self.save_checkpoint(checkpoint_path=self.data_dirs['checkpoint_path'])
                         break
-                else:
+                elif self.val_data is not None and epoch % self.val_step != 0:
+                    pass
+                elif self.val_data is None:
                     if acc_dict['train'] > max_acc:
                         max_acc = acc_dict['val']
                     if np.all(max_acc > np.asarray(train_accs[-self.patience:])):
@@ -704,33 +709,34 @@ class Trainer:
                 np.save(train_inds_fname, train_inds)
 
             if self.val_data:
-                self.logger.info('calculating validation accuracy')
-                val_accs = []
-                with tqdm(total=self.num_val_samples) as progress_bar:
-                    for img, lbl, batch_train_inds in self.val_data.batch(self.batch_size):
-                        # loop through Monte Carlo sampling episode for each batch
-                        # slower than copying data, but avoids Out Of Memory errors that could result from doing so
-                        for ep in range(self.num_mc_episode):
-                            out_t_minus_1 = self.model.reset()
-                            if self.val_l0 is not None:
-                                l_t = np.broadcast_to(self.val_l0, shape=(self.batch_size, 2))
-                                out_t_minus_1 = StateAndMeta(None, None, out_t_minus_1.h_t, None, l_t, None, None)
+                if current_epoch % self.val_step == 0:
+                    self.logger.info('calculating validation accuracy')
+                    val_accs = []
+                    with tqdm(total=self.num_val_samples) as progress_bar:
+                        for img, lbl, batch_train_inds in self.val_data.batch(self.batch_size):
+                            # loop through Monte Carlo sampling episode for each batch
+                            # slower than copying data, but avoids Out Of Memory errors that could result from doing so
+                            for ep in range(self.num_mc_episode):
+                                out_t_minus_1 = self.model.reset()
+                                if self.val_l0 is not None:
+                                    l_t = np.broadcast_to(self.val_l0, shape=(self.batch_size, 2))
+                                    out_t_minus_1 = StateAndMeta(None, None, out_t_minus_1.h_t, None, l_t, None, None)
 
-                            for t in range(self.model.glimpses):
-                                out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
-                                out_t_minus_1 = out
+                                for t in range(self.model.glimpses):
+                                    out = self.model.step(img, out_t_minus_1.l_t, out_t_minus_1.h_t)
+                                    out_t_minus_1 = out
 
-                            # Remember that action network output a_t becomes predictions at last time step
-                            predicted = tf.argmax(
-                                tf.nn.softmax(out.a_t),
-                                axis=1, output_type=tf.int32)
-                            val_acc = tf.equal(predicted, lbl)
-                            val_acc = np.sum(val_acc.numpy()) / val_acc.numpy().shape[-1] * 100
-                            val_accs.append(val_acc)
+                                # Remember that action network output a_t becomes predictions at last time step
+                                predicted = tf.argmax(
+                                    tf.nn.softmax(out.a_t),
+                                    axis=1, output_type=tf.int32)
+                                val_acc = tf.equal(predicted, lbl)
+                                val_acc = np.sum(val_acc.numpy()) / val_acc.numpy().shape[-1] * 100
+                                val_accs.append(val_acc)
 
-                        progress_bar.update(self.batch_size)
+                            progress_bar.update(self.batch_size)
 
-                acc_dict['val'] = np.mean(val_accs)
+                    acc_dict['val'] = np.mean(val_accs)
 
         mn_loss_reinforce = np.asarray(losses_reinforce).mean()
         mn_loss_baseline = np.asarray(losses_baseline).mean()
