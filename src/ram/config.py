@@ -24,6 +24,7 @@ VALID_OPTIONS = {
         'learning_rate',
         'decay_rate',
         'epochs',
+        'val_step',
         'optimizer',
         'beta1',
         'beta2',
@@ -119,6 +120,7 @@ class TrainConfig(object):
     learning_rate = attr.ib(converter=float, default=1e-3)
     decay_rate = attr.ib(converter=attr.converters.optional(float), default=None)
     epochs = attr.ib(converter=int, default=200)
+    val_step = attr.ib(converter=int, default=10)
     optimizer = attr.ib(type=str, default='momentum')
     beta1 = attr.ib(converter=float, default=0.9)
     beta2 = attr.ib(converter=float, default=0.999)
