@@ -35,10 +35,17 @@ def _call_prep(config, configfile, logger, dataset_module):
     logger.info(f'train size (None = use all training data): {config.data.train_size}')
     logger.info(f'val size (None = no validation set): {config.data.val_size}')
 
-    paths_dict = dataset_module.prep(download_dir=config.data.data_dir,
-                                     train_size=config.data.train_size,
-                                     val_size=config.data.val_size,
-                                     output_dir=config.data.data_dir)
+    prep_kwargs = dict(download_dir=config.data.data_dir,
+                       train_size=config.data.train_size,
+                       val_size=config.data.val_size,
+                       output_dir=config.data.data_dir,
+                       random_seed=config.misc.random_seed)
+
+    # kwargs used for dataset.searchstims module
+    if config.data.stim_type is not None:
+        prep_kwargs['stim_type'] = config.data.stim_type
+
+    paths_dict = dataset_module.prep(**prep_kwargs)
     logger.info(f'Prepared dataset from {config.data.data_dir}')
     paths_dict_fname = os.path.join(config.data.data_dir, 'paths_dict.json')
     with open(paths_dict_fname, 'w') as paths_dict_json:
