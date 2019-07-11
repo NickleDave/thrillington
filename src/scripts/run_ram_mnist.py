@@ -18,10 +18,6 @@ CONFIG_FILES = [
 
 L0s = [
     [0., 0.],
-    [-0.5, -0.5],
-    [-0.5, 0.5],
-    [0.5, -0.5],
-    [0.5, 0.5],
 ]
 L0s = [np.asarray(arr, dtype=np.float32) for arr in L0s]
 
