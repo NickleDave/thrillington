@@ -28,7 +28,7 @@ def main():
                       which_sample=2,
                       suptitle=suptitle, save_as=save_as)
 
-    run_results = '/home/bart/Documents/data/RAM_output/RAM_results_190420_231619/run_results_190711_100204/replicate_1/examples'
+    run_results = '/home/bart/Documents/data/RAM_output/RAM_results_190420_231619/run_results_190711_113702/replicate_1/examples'
     suptitle = "learning rate = 0.01, standard devation = 1.0, test acc = 73.8%"
     save_as = "run_results_lr0.001_std1.0_testacc73.8_sample2.png"
     ram.plot.behavior(run_results, suffix='_from_run',
