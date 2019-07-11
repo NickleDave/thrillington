@@ -170,7 +170,9 @@ def behavior(examples_dir, suffix,
             specific_sample_ind = digit_inds[which_sample]
             that_sample_all_episodes = [specific_sample_ind + (num_samples_per_batch * episode)
                                         for episode in range(num_mc_episodes)]
-        fixes_by_digit[digit] = fix[digit_inds]
+            fixes_by_digit[digit] = fix[that_sample_all_episodes]
+        else:
+            fixes_by_digit[digit] = fix[digit_inds]
 
     fig, ax = plt.subplots(2, 5)
     fig.set_size_inches(25, 15)
