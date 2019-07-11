@@ -114,3 +114,86 @@ def examples(fixations, images, patch_sizes,
     # save as mp4
     if save_as:
         anim.save(save_as)
+
+
+def discrete_cmap(N=6, base_cmap='Greens'):
+    """Create an N-bin discrete colormap from the specified input map"""
+
+    # Note that if base_cmap is a string or None, you can simply do
+    #    return plt.cm.get_cmap(base_cmap, N)
+    # The following works for string, None, or a colormap instance:
+
+    base = plt.cm.get_cmap(base_cmap)
+    color_list = base(np.linspace(0, 1, N+1))
+    cmap_name = base.name + str(N)
+    return base.from_list(cmap_name, color_list, N)
+
+
+def behavior(examples_dir, suffix,
+             num_samples_per_batch=500, num_mc_episodes=10,
+             plot_same_sample_diff_eps=False,
+             which_sample=None,
+             suptitle=None, save_as=None):
+    """plot 'behavior' of model"""
+    style.use('dark_background')
+
+    plt.rcParams['font.size'] = 32
+    plt.rcParams['axes.labelsize'] = 32
+    plt.rcParams['axes.labelweight'] = 'regular'
+    plt.rcParams['axes.titlesize'] = 36
+    plt.rcParams['xtick.labelsize'] = 24
+    plt.rcParams['ytick.labelsize'] = 24
+    plt.rcParams['legend.fontsize'] = 24
+    plt.rcParams['figure.titlesize'] = 48
+
+    fixation_cmap = discrete_cmap()
+    # get data
+    fix_path = os.path.join(examples_dir, f'fixations{suffix}.npy')
+    fix = np.load(fix_path)
+
+    images_path = os.path.join(examples_dir, f'images{suffix}.npy')
+    images = np.load(images_path)
+
+    true_lbl_path = os.path.join(examples_dir, f'labels{suffix}.npy')
+    true_lbl = np.load(true_lbl_path)
+
+    num_examples = fix.shape[0]
+
+    # make dictionary where key is digit
+    # and value is fixations for all instances of that digit
+    fixes_by_digit = {}
+    digits = range(10)
+    for digit in digits:
+        digit_inds = np.where(true_lbl == digit)[0]
+        if plot_same_sample_diff_eps:
+            specific_sample_ind = digit_inds[which_sample]
+            that_sample_all_episodes = [specific_sample_ind + (num_samples_per_batch * episode)
+                                        for episode in range(num_mc_episodes)]
+        fixes_by_digit[digit] = fix[digit_inds]
+
+    fig, ax = plt.subplots(2, 5)
+    fig.set_size_inches(25, 15)
+    ax = ax.ravel()
+
+    for digit in digits:
+        fixes_this_digit = fixes_by_digit[digit]
+        xx = fixes_this_digit[:, :, 0]
+        yy = fixes_this_digit[:, :, 1]
+        for x, y in zip(xx, yy):
+            ax[digit].plot(x, y, color='gray', linewidth=0.5)
+        xmean = xx.mean(axis=0)
+        ymean = yy.mean(axis=0)
+        xy = np.stack([xmean, ymean], axis=1)
+        for ind, (start, stop) in enumerate(zip(xy[:-1], xy[1:])):
+            x, y = zip(start, stop)
+            ax[digit].plot(x, y, color=fixation_cmap(ind),
+                           linewidth=4, linestyle='--', marker='o')
+        ax[digit].set_xlim([0, 28])
+        ax[digit].set_ylim([0, 28])
+        ax[digit].set_xlabel(f'digit = {digit}')
+
+    if suptitle:
+        fig.suptitle(suptitle)
+
+    if save_as:
+        plt.savefig(save_as)
